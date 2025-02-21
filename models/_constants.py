@@ -9,3 +9,7 @@ QDRANT_PORT = "6333"
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
 MODEL_DEVICE= {'device': 'cuda'}
 ENCODE_KWARGS= {'normalize_embeddings': True}
+
+# ====================== CHATBOT NAME ======================
+NAME_CHATBOT = "CHATBOT"
+NAME_CHATBOT_BASIC = "CHATBOT_BASIC"

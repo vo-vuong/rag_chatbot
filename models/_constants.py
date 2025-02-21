@@ -13,3 +13,11 @@ ENCODE_KWARGS= {'normalize_embeddings': True}
 # ====================== CHATBOT NAME ======================
 NAME_CHATBOT = "CHATBOT"
 NAME_CHATBOT_BASIC = "CHATBOT_BASIC"
+
+NAME_CHATBOT_STAVIAN_GROUP = "STAVIAN_GROUP_CHATBOT"
+
+
+# ====================== DATA PATH ======================
+DATAS_PATH = "./files/datas/user"
+DATAS_PUBLIC_PATH = "./files/datas/public"
+DATAS_STAVIAN_GROUP_PATH = "./files/datas/stavian_group"

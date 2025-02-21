@@ -113,6 +113,27 @@ class QdrantHandler:
         # saves = run_bots_in_parallel(qdrant_docs)
         return qdrant_docs
 
+    def get_point_from_ids(self, collection_name, point_ids):
+        id = self.client.retrieve(collection_name=collection_name, ids=point_ids)
+        return id
+
+    def get_value_points(self, point_ids, collection_name):
+        points = self.get_point_from_ids(
+            db=self, collection_name=collection_name, point_ids=point_ids
+        )
+        values = []
+
+        for point in points:
+            value = {
+                "page_content": point.payload["metadata"]["page_content"],
+                "metadata": {
+                    "file_name": point.payload["metadata"]["file_name"],
+                    "page_number": point.payload["metadata"]["page"],
+                },
+            }
+            values.append(value)
+        return values
+
 # Example usage
 if __name__ == "__main__":
     handler = QdrantHandler()
@@ -135,6 +156,13 @@ if __name__ == "__main__":
             metadata={"source": "Wikipedia", "language": "vi"},
         ),
     ]
-    collection_name = "example_collection"
-    point_ids = [4, 5, 6]
-    handler.save_vector_db_as_ids_single(docs, collection_name, point_ids)
+    # collection_name = "example_collection"
+    # point_ids = [4, 5, 6]
+    # handler.save_vector_db_as_ids_single(docs, collection_name, point_ids)
+
+    # get point from ids
+    # point_ids = [4, 5, 6]
+    # points = handler.get_point_from_ids("example_collection", point_ids)
+    # print(points)
+
+    

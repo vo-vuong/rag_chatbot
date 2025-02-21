@@ -49,6 +49,33 @@ llm_4o_mini_0_stream_temperature = ChatOpenAI(model="gpt-4o-mini", temperature=0
 llm_4o_mini_05_stream_temperature = ChatOpenAI(model="gpt-4o-mini", temperature=0.5, streaming=True)
 llm_4o_mini_10_stream_temperature = ChatOpenAI(model="gpt-4o-mini", temperature=1, streaming=True)
 
+def get_llm(model="gpt-4o", temperature=0.5):
+    if model == "gpt-4o":
+        if temperature == 0:
+            return llm_4o_00_temperature
+        elif temperature == 0.5:
+            return llm_4o_05_temperature
+        elif temperature == 1:
+            return llm_4o_10_temperature
+        elif temperature == 1.5:
+            return llm_4o_15_temperature
+        else:
+            return ChatOpenAI(model=model, temperature=temperature)
+
+    elif model == "gpt-4o-mini":
+        if temperature == 0:
+            return llm_4o_mini_0_temperature
+        elif temperature == 0.5:
+            return llm_4o_mini_05_temperature
+        elif temperature == 1:
+            return llm_4o_mini_10_temperature
+        else:
+            return ChatOpenAI(model=model, temperature=temperature)
+
+    else:
+        return ChatOpenAI(model=model, temperature=temperature)
+
+
 def get_llm_stream(model="gpt-4o", temperature=0.5):
     if model == "gpt-4o":
         if temperature == 0:

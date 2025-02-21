@@ -1,15 +1,11 @@
 import sys
 import os
-# Add the parent directory of 'models' to the Python path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from controllers.rag import _re_write_query, _clean_data
 import time
-
 from dotenv import load_dotenv
 import threading
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
-# from controllers.rag import _clean_data
-# from controllers.rag import _rag_qdrant, _re_write_query
 import asyncio
 from models import _environments, _prompts
 load_dotenv()
@@ -18,16 +14,18 @@ load_dotenv()
 # Stream
 def chatbot_basic_stream(query, user_id, history, collection_id, chatbot_name, temperature=0.5):
     history_re_write = "\n\n".join([f"Q: {item['query']}" for item in history])
-    re_write_query = query
-    # re_write_query = """""" + _re_write_query.re_write_query(query=query, history=history_re_write)
-    # re_write_query = _clean_data.validate_and_fix_braces(re_write_query)
-    # print("========================================================")
-    # print("Re Write Query:\n", re_write_query)
-    # print("========================================================\n")
+    re_write_query = """""" + _re_write_query.re_write_query(query=query, history=history_re_write)
+    re_write_query = _clean_data.validate_and_fix_braces(re_write_query)
+    print("========================================================")
+    print("Re Write Query:\n", re_write_query)
+    print("========================================================\n")
 
-    # history_context = "\n\n".join([f"Q: {item['query']}\nA: {item['answer']}" for item in history])
+    bot_params_list = []
+    total_img = 0
 
-    # history_context = _clean_data.validate_and_fix_braces(history_context)
+    history_context = "\n\n".join([f"Q: {item['query']}\nA: {item['answer']}" for item in history])
+
+    history_context = _clean_data.validate_and_fix_braces(history_context)
     history_context = ""
     prompt = ChatPromptTemplate.from_messages([
         ("system", _prompts.CHATBOT_BASIC.format(history=str(history_context))),
@@ -70,7 +68,7 @@ def chatbot_basic_stream(query, user_id, history, collection_id, chatbot_name, t
         #         chart_answer,
         #     ),
         # ).start()
-    # re_write_query = "Hello, how are you?"
+
     stream_response = generate_chat_responses({"input": str(re_write_query)})
 
     # return _environments.get_llm_stream(model="gpt-4o", temperature=temperature).stream("Giải thích về Machine Learning")

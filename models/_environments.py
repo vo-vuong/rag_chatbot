@@ -10,7 +10,7 @@ import os
 ########################################################################################
 
 # OpenAIEmbeddings embeddings_model
-# embeddings_model = OpenAIEmbeddings()
+embeddings_model = OpenAIEmbeddings()
 
 # BAAI/bge-m3 embeddings_model
 # embeddings_model = BGE_M3Embeddings()

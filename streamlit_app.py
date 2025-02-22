@@ -10,32 +10,36 @@ from models import _environments, _prompts, _constants
 import time
 
 
-
-
 async def chatbot_response(user_input):
     try:
         loop = asyncio.get_running_loop()
 
         history = _history.load_history(
             # request.user_id, request.collection_id, _constants.NAME_CHATBOT_BASIC
-            1, 1, _constants.NAME_CHATBOT_BASIC
+            1, 1, _constants.NAME_CHATBOT_QUOTE_IMAGES_EXACTLY
         )
+
+        list_collections = [
+            # retriever["collection_name"] for retriever in request.list_retrievers
+            "10_CHATBOT_1"
+        ]
 
         answer = await loop.run_in_executor(
             None,
-            _chatbot_basic.chatbot_basic_stream,
+            _chatbot_basic.chatbot,
             user_input,
+            list_collections,
             1,
             history,
             1,
-            _constants.NAME_CHATBOT_BASIC,
+            _constants.NAME_CHATBOT_QUOTE_IMAGES_EXACTLY,
             0.5,
         )
         yield answer
 
     except Exception as e:
-        content = {"status": 400, "message": "Lỗi chatbot basic: " + str(e)}
-        response = f"Bot: Lỗi - '{content}'"
+        content = {"status": 400, "message": "" + str(e)}
+        response = f"'{content}'"
         for word in response.split():
             yield word + " "
             await asyncio.sleep(0.01)
@@ -48,9 +52,9 @@ if 'messages' not in st.session_state:
 st.title("Stavian Group Chatbot")
 
 # Hiển thị lịch sử tin nhắn
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+# for message in st.session_state.messages:
+#     with st.chat_message(message["role"]):
+#         st.markdown(message["content"])
 
 # Nhận input từ người dùng
 # user_input = st.chat_input("Nhập tin nhắn...")

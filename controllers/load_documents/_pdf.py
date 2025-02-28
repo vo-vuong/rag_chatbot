@@ -5,25 +5,26 @@ from transformers import logging
 logging.set_verbosity_error()
 import pytesseract
 pytesseract.pytesseract.tesseract_cmd = r"C:\Tesseract-OCR\tesseract.exe"
+from models import _constants
 
 
 def load_documents(file_path: str):
-    # raw_elements = partition_pdf(filename=file_path,
-    #                             #  extract_image_block_types=["Image"],
-    #                             #  infer_table_structure=False,
-    #                             #  form_extraction_skip_tables=False,
-    #                             #  languages=["vie"],
-    #                             #  strategy="auto",
-    #                             #  hi_res_model_name="yolox",
-    #                             #  chunking_strategy="by_title",
-    #                             #  partitioning_strategies="auto",
-    #                             #  max_characters=3072,
-    #                             #  new_after_n_chars=3072,
-    #                             #  combine_text_under_n_chars=1024,
-    #                             #  multipage_sections=False,
-    #                             #  extract_image_block_output_dir=_constants.FILE_IMAGE_OUTPUT_DIR_PATH
-    # )
-    raw_elements = partition(filename=file_path)
+    raw_elements = partition_pdf(filename=file_path,
+                                 extract_image_block_types=["Image"],
+                                 infer_table_structure=False,
+                                 form_extraction_skip_tables=False,
+                                 languages=["vie"],
+                                 strategy="auto",
+                                 hi_res_model_name="yolox",
+                                 chunking_strategy="by_title",
+                                 partitioning_strategies="auto",
+                                 max_characters=3072,
+                                 new_after_n_chars=3072,
+                                 combine_text_under_n_chars=1024,
+                                 multipage_sections=False,
+                                 extract_image_block_output_dir=_constants.FILE_IMAGE_OUTPUT_DIR_PATH
+    )
+    # raw_elements = partition(filename=file_path)
 
     return raw_elements
 

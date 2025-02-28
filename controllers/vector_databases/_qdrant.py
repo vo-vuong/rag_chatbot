@@ -155,8 +155,10 @@ def save_vector_db_as_ids_single(docs, collection_name, point_ids):
 
 
 def save_vector_db_as_ids(docs, collection_name, point_ids, file_chunk_size):
-    # if len(docs) != len(point_ids):
-    #     raise ValueError("len(docs) != len(point_ids)")
+    if len(docs) != len(point_ids):
+        raise ValueError("len(docs) != len(point_ids)")
+    print("file_chunk_size: ==============", file_chunk_size)
+    print("len(docs): ==============", len(docs))
 
     if file_chunk_size == 1:
         saves = save_vector_db_as_ids_single(docs, collection_name, point_ids)
@@ -213,5 +215,3 @@ def save_vector_db_as_ids(docs, collection_name, point_ids, file_chunk_size):
     # point_ids = [4, 5, 6]
     # points = handler.get_point_from_ids("example_collection", point_ids)
     # print(points)
-
-    

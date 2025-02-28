@@ -301,6 +301,7 @@ def split_and_process_pdf(
         #     ).start()
 
         # Sắp xếp kết quả theo thứ tự trang
+        print("Sorting results...")
         sorted_results = sorted(results, key=lambda x: x[0])
         raw_elements = [item for _, sublist in sorted_results for item in sublist]
         return raw_elements

@@ -5,6 +5,7 @@ import concurrent.futures
 from typing import List
 from langchain_core.documents import Document
 import re
+from unstructured.documents.elements import NarrativeText, Title, Footer, Text, CompositeElement
 
 # add text 1 node
 def add_text(
@@ -104,33 +105,18 @@ def get_element_data(raw_data_elements):
 
     def process_element(index, element):
         print("element_struc" + str(type(element)))
-        if "unstructured.documents.elements.Text" in str(type(element)):
+        print("e----" + str(element))
+        print(element)
+        print("element end")
+
+        if isinstance(element, Text):
             file_name = element.metadata.filename
             text = str(element.text)
             page = element.metadata.page_number
             # print("text" + file_name)
             return index, text, text, page, file_name
-        # if "unstructured.documents.elements.Table" in str(type(element)):
-        #     # print("element-------" + str(type(element)))
-        #     file_name = element.metadata.filename
-        #     table_text = str(element.text)
-        #     table_html = str(element.metadata.text_as_html)
-        #     page = sorted(
-        #         {e.metadata.page_number for e in element.metadata.orig_elements}
-        #     )
-        #     ordered_set_numbers = OrderedSet(page)
 
-        #     table_summary = _summary.summary_table(table_text)
-        #     table_sum_up = f"# Nội dung của bảng: {table_text}\n\n# Nội dung của bảng dưới dạng HTML: {table_html}"
-        #     return (
-        #         index,
-        #         table_sum_up,
-        #         table_summary,
-        #         str(ordered_set_numbers),
-        #         file_name,
-        #     )
-
-        if "unstructured.documents.elements.CompositeElement" in str(type(element)):
+        if isinstance(element, CompositeElement):
             file_name = element.metadata.filename
             page = sorted(
                 {e.metadata.page_number for e in element.metadata.orig_elements}
@@ -139,6 +125,32 @@ def get_element_data(raw_data_elements):
 
             data_page = f"{str(element)}"
             return index, data_page, str(element), str(ordered_set_numbers), file_name
+        
+        if isinstance(element, NarrativeText):
+            file_name = element.metadata.filename
+            text = str(element.text)
+            page = element.metadata.page_number
+            summary = text
+            print("element---------" + element)
+            return index, text, summary, page, file_name
+
+        # Xử lý dữ liệu kiểu Title
+        if isinstance(element, Title):
+            file_name = element.metadata.filename
+            text = str(element.text)
+            page = element.metadata.page_number
+            summary = text
+            print("file_name---------" + file_name)
+            return index, text, summary, page, file_name
+
+        # Xử lý dữ liệu kiểu Footer
+        if isinstance(element, Footer):
+            file_name = element.metadata.filename
+            text = str(element.text)
+            page = element.metadata.page_number
+            summary = text
+            print("file_name---------" + file_name)
+            return index, text, summary, page, file_name
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         print("raw_data_elements")

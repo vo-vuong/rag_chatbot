@@ -4,7 +4,9 @@
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 import os
-# os.environ["OPENAI_API_KEY"] = 
+from dotenv import load_dotenv
+load_dotenv()
+os.environ["OPENAI_API_KEY"] = os.getenv("OPENAI_API_KEY")
 
 
 ########################################################################################

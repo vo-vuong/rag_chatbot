@@ -10,25 +10,17 @@ from models import _environments, _prompts, _constants
 import time
 
 
-async def chatbot_response(query):
+def chatbot_response(query):
     try:
-        loop = asyncio.get_running_loop()
+        query = query.lower()
         history = _history.load_history()
-        answer = await loop.run_in_executor(
-            None,
-            _chatbot_basic.chatbot,
-            query,
-            history,
-            0.5
-        )
-        yield answer
+        answer = _chatbot_basic.chatbot(query, history, 0.5)
+        return answer
 
     except Exception as e:
         content = {"status": 400, "message": "" + str(e)}
         response = f"'{content}'"
-        for word in response.split():
-            yield word + " "
-            await asyncio.sleep(0.01)
+        return response
 
 
 # Khởi tạo session state để lưu lịch sử chat
@@ -49,5 +41,6 @@ if prompt := st.chat_input("Nhập thông tin hỏi đáp..."):
         st.markdown(prompt)
 
     with st.chat_message("assistant"):
-        response = st.write_stream(chatbot_response(prompt))
+        response = chatbot_response(prompt)
+        st.markdown(response)
     st.session_state.messages.append({"role": "assistant", "content": response})

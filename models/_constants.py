@@ -3,7 +3,7 @@
 QDRANT_SERVER = "http://localhost"
 # QDRANT_SERVER = "http://3.147.66.45:6333"
 QDRANT_PORT = "6333"
-COLLECTION_NAME = "test_collection4"
+COLLECTION_NAME = "test_collection10"
 
 
 # ================ Embedding model ===================

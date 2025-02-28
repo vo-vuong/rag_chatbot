@@ -94,7 +94,7 @@ def get_value_branch(db, result, collection_name):
 
     context_content = result.page_content
     context_filename = result.metadata["source"]
-    context_page_number = result.metadata["page"]
+    context_page_number = result.metadata["page_label"]
 
     context = (
         str(context_content)
@@ -108,34 +108,6 @@ def get_value_branch(db, result, collection_name):
     values += context + "\n\n"
 
     return values
-
-
-def retriever_question2(db, query, collection_name):
-    docs = _qdrant.similarity_search_qdrant_data(db, query, 3)
-
-    # for doc in docs:
-    #     print("\n========================================================")
-    #     print("### doc id:\n" + str(doc.metadata["doc_id"]))
-    #     print("### doc:\n" + doc.metadata["page_content"])
-    #     print("========================================================\n")
-
-    list_ids = _node_structed.get_ids_3_node(docs)
-    results = _node_structed.merge_lists(list_ids)
-
-    retrievers = ""
-
-    for result in results:
-        retriever = get_value_branch(db, result, collection_name) + "\n"
-        retrievers += retriever
-
-        # nếu không phải là phần tử cuối cùng
-        if result != results[-1]:
-            retrievers += "\n\n"
-
-    # print("retrievers data: ======================================")
-    # print("retrievers data: ", retrievers)
-
-    return retrievers
 
 def save_vector_db(file_path, user_id, language, chatbot_name, file_chunk_size, exactly):
     file_extension = file_path.split(".")[-1].lower()

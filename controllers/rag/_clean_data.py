@@ -131,7 +131,10 @@ def remove_char_dots(text):
 
 def clean_data_unstructured(texts):
     _text = []
+    print("clean_data_unstructured")
     for text in texts:
+        if not text:
+            continue
         # print(text)
         # text = clean_text(text, unwanted_chars)
         text = remove_specific_chars(text, unwanted_chars)
@@ -139,4 +142,6 @@ def clean_data_unstructured(texts):
         text = group_broken_paragraphs(text)
         text = remove_char_dots(text)
         _text.append(text)
+
+    print("end clean_data_unstructured")
     return _text

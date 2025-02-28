@@ -7,7 +7,7 @@ import threading
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 import asyncio
-from models import _environments, _prompts
+from models import _environments, _prompts, _constants
 load_dotenv()
 
 
@@ -76,7 +76,7 @@ load_dotenv()
 
 
 # Stream
-def chatbot(query, list_collections, user_id, history, collection_id, chatbot_name, temperature=0.5):
+def chatbot(query, history, temperature=0.5):
     history_re_write = "\n\n".join([f"Q: {item['query']}" for item in history])
     re_write_query = """""" + _re_write_query.re_write_query(query=query, history=history_re_write)
     re_write_query = _clean_data.validate_and_fix_braces(re_write_query)
@@ -86,27 +86,15 @@ def chatbot(query, list_collections, user_id, history, collection_id, chatbot_na
 
     retrievers = ""
     # for collection in list_collections:
-    db = _rag_qdrant.load_vector_db("10_CHATBOT_1")
+    db = _rag_qdrant.load_vector_db(_constants.COLLECTION_NAME)
     # print(db)
-    retriever = _rag_qdrant.retriever_question(db, re_write_query, "10_CHATBOT_1")
-
-        # try:
-        #     # parts_img = collection.split("_")
-        #     # modified_string_img = f"{parts_img[0]}_{parts_img[3]}"
-        #     # db_images = _rag_qdrant.load_vector_db(modified_string_img + "_images")
-        #     # retriever_img = _rag_qdrant.retriever_question_img(
-        #     #     db_images, re_write_query, modified_string_img + "_images"
-        #     # )
-        # except Exception as e:
-        #     retriever_img = ""
-        #     print("Error chatbot_quote_images 1: ", e)
-        #     pass
-
-        # retrievers += retriever + "\n\n" + retriever_img + "\n\n"
+    retriever = _rag_qdrant.retriever_question(db, re_write_query, _constants.COLLECTION_NAME)
     retrievers += retriever + "\n\n"
+    print("=========" + retriever + "=========")
 
     history_context = "\n\n".join([f"Q: {item['query']}\nA: {item['answer']}" for item in history])
-
+    print("========================================================")
+    print("retrievers:\n", retrievers)
     history_context = _clean_data.validate_and_fix_braces(history_context)
     contexts = _clean_data.validate_and_fix_braces(retrievers)
 
@@ -121,9 +109,12 @@ def chatbot(query, list_collections, user_id, history, collection_id, chatbot_na
             ("human", str(re_write_query)),
         ]
     )
-
-    # print("Prompt CHATBOT_QUOTE:\n", prompt)
-    print("Prompt CHATBOT_QUOTE:\n")
+    # print("===============================")
+    # print("Prompt prompt1:\n", prompt)
+    # print("===============================")
+    # print("Prompt re_write_query2:\n", re_write_query)
+    # print("===============================")
+    # print("Prompt CHATBOT_QUOTE:\n")
 
     chain = prompt | _environments.get_llm_stream(model="gpt-4o", temperature=temperature) | StrOutputParser()
     # answer = chain.invoke({"input": str(re_write_query)})
@@ -140,28 +131,13 @@ def chatbot(query, list_collections, user_id, history, collection_id, chatbot_na
             # yield f"data: {content}\n\n"
             yield content
 
-    #     tmp = re_write_query + " , " + query
-    #     text_query = tmp.lower()
-
-        # if "biểu đồ" in text_query or "bieu do" in text_query or "chart" in text_query:
-        #     yield f"data: ---chart---\n\n"
-        #     chart_answer = _chart.draw_char(history_context, str(re_write_query))
-
-        #     yield f"data: {chart_answer}\n\n"
-        #     yield f"data: ---end_chart---\n\n"
-
-        # threading.Thread(
-        #     target=_rag_qdrant.save_history,
-        #     args=(
-        #         answer,
-        #         user_id,
-        #         re_write_query,
-        #         collection_id,
-        #         chatbot_name,
-        #         base64_images,
-        #         chart_answer,
-        #     ),
-        # ).start()
+        threading.Thread(
+            target=_rag_qdrant.save_history,
+            args=(
+                answer,
+                re_write_query
+            ),
+        ).start()
 
     stream_response = generate_chat_responses({"input": str(re_write_query)})
 

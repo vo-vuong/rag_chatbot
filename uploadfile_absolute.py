@@ -123,7 +123,7 @@ async def upload_files_absolute(
 
 async def main():
     user_id = "10"
-    language = "Việt nam"
+    language = "vie"
     chatbot_name = "STAVIAN_GROUP_CHAT"
 
     file = await aiofiles.open("Stavian_Group.pdf", "rb")

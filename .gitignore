@@ -135,3 +135,9 @@ cython_debug/
 
 # Vscode
 .vscode/
+
+# History file
+history.json
+
+# Qdrant local storage
+qdrant_storage/

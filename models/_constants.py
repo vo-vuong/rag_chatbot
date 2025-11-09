@@ -1,15 +1,7 @@
-# ====================== QDRANT ======================
-# QDRANT_DIR_CRAWL = "./qdrant_db"
-QDRANT_SERVER = "http://localhost"
-# QDRANT_SERVER = "http://3.147.66.45:6333"
-QDRANT_PORT = "6333"
-COLLECTION_NAME = "test_collection10"
-
-
 # ================ Embedding model ===================
 MODEL_NAME = "BAAI/bge-large-en-v1.5"
-MODEL_DEVICE= {'device': 'cuda'}
-ENCODE_KWARGS= {'normalize_embeddings': True}
+MODEL_DEVICE = {'device': 'cuda'}
+ENCODE_KWARGS = {'normalize_embeddings': True}
 
 # ====================== CHATBOT NAME ======================
 NAME_CHATBOT = "CHATBOT"

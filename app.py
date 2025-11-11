@@ -74,13 +74,7 @@ class RAGChatbotApp:
         st.markdown("---")
         section_num += 1
 
-        # 4. Column Selection (if data is saved)
-        if self.session_manager.get("data_saved_success"):
-            self._render_column_selection(section_num)
-            st.markdown("---")
-            section_num += 1
-
-        # 5. LLM Setup
+        # 4. LLM Setup
         try:
             self.llm_ui.render(section_num)
             st.markdown("---")
@@ -88,7 +82,7 @@ class RAGChatbotApp:
         except Exception as e:
             st.error(f"Error in LLM Setup: {str(e)}")
 
-        # 6. Interactive Chatbot
+        # 5. Interactive Chatbot
         try:
             self.chatbot_ui.render(section_num)
         except Exception as e:
@@ -139,40 +133,6 @@ class RAGChatbotApp:
         else:
             st.header(header_text)
             st.warning("⚠️ No data loaded yet. Please upload and save data first.")
-
-    def _render_column_selection(self, header_num: int):
-        """
-        Render column selection for chatbot answers.
-
-        Args:
-            header_num: Section number
-        """
-        st.header(f"{header_num}. Select Answer Columns")
-
-        chunks_df = self.session_manager.get("chunks_df")
-
-        if chunks_df is not None and not chunks_df.empty:
-            st.info(
-                "💡 Select which columns contain information for the chatbot to use"
-            )
-
-            selected_columns = st.multiselect(
-                "Select columns:",
-                chunks_df.columns.tolist(),
-                default=self.session_manager.get("columns_to_answer", []),
-                help="Choose one or more columns that contain relevant information",
-            )
-
-            self.session_manager.set("columns_to_answer", selected_columns)
-
-            if selected_columns:
-                st.success(
-                    f"✅ Selected {len(selected_columns)} column(s): {', '.join(selected_columns)}"
-                )
-            else:
-                st.warning("⚠️ Please select at least one column")
-        else:
-            st.warning("No data available. Please upload and save data first.")
 
 
 def main():

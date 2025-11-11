@@ -141,3 +141,6 @@ history.json
 
 # Qdrant local storage
 qdrant_storage/
+
+# Testing_datas
+testing_datas/*

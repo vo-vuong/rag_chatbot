@@ -5,7 +5,7 @@ import streamlit as st
 from backend.llms.llm_factory import LLMFactory
 from backend.llms.ollama_manager import GGUF_MODEL_OPTIONS, OLLAMA_MODEL_OPTIONS
 from backend.session_manager import SessionManager
-from config.constants import GEMINI, LOCAL_LLM, ONLINE_LLM, OPENAI
+from config.constants import GEMINI, LOCAL_LLM, ONLINE_LLM, OPENAI, OPENAI_API_KEY
 from ui.components import notify
 
 
@@ -77,7 +77,7 @@ class LLMSetupUI:
         """
         # Show API key documentation link
         if provider == OPENAI:
-            default_key = os.getenv("OPENAI_API_KEY", "")
+            default_key = OPENAI_API_KEY
         else:  # GEMINI
             default_key = os.getenv("GEMINI_API_KEY", "")
 

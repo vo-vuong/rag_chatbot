@@ -4,28 +4,55 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Language options
+# ============================================================
+# LANGUAGE OPTIONS
+# ============================================================
 NONE = "None"
 ENGLISH = "English"
 VIETNAMESE = "Vietnamese"
 EN = "en"
 VI = "vi"
 
-# Chunking options
+# ============================================================
+# EMBEDDING PROVIDERS
+# ============================================================
+# Online Embedding Providers
+OPENAI_EMBEDDING_PROVIDER = "openai"
+OPENAI_DEFAULT_EMBEDDING_MODEL = "text-embedding-3-small"
+OPENAI_DEFAULT_EMBEDDING_DIMENSION = 1536
+
+# Local Embedding Providers (Placeholder for future)
+LOCAL_EMBEDDING_PROVIDER = "local"
+LOCAL_EMBEDDING_MODELS = {
+    "English Small": "all-MiniLM-L6-v2",  # 384 dimensions
+    "English Large": "all-mpnet-base-v2",  # 768 dimensions
+    "Vietnamese": "keepitreal/vietnamese-sbert",  # 768 dimensions
+}
+
+# Deprecated - Keep for backward compatibility
+ENGLISH_EMBEDDING_MODEL = 'all-MiniLM-L6-v2'
+VIETNAMESE_EMBEDDING_MODEL = 'keepitreal/vietnamese-sbert'
+
+# ============================================================
+# CHUNKING OPTIONS
+# ============================================================
 NO_CHUNKING = "No Chunking"
 RECURSIVE_TOKEN_CHUNKER = "RecursiveTokenChunker"
 SEMANTIC_CHUNKER = "SemanticChunker"
 AGENTIC_CHUNKER = "AgenticChunker"
 
-# Chat roles
+# ============================================================
+# CHAT ROLES
+# ============================================================
 USER = "user"
 ASSISTANT = "assistant"
 
-# LLM types
+# ============================================================
+# LLM TYPES & PROVIDERS
+# ============================================================
 ONLINE_LLM = "online_llm"
 LOCAL_LLM = "local_llm"
 
-# LLM providers
 GEMINI = "Gemini"
 OPENAI = "OpenAI"
 OLLAMA = "Ollama"
@@ -36,37 +63,39 @@ DEFAULT_CHUNK_SIZE = 200
 DEFAULT_CHUNK_OVERLAP = 20
 DEFAULT_NUM_RETRIEVAL = 3
 
-# Data sources
+# ============================================================
+# DATA SOURCES
+# ============================================================
 UPLOAD = "UPLOAD"
 DB = "DB"
 
-# Embedding models
-ENGLISH_EMBEDDING_MODEL = 'all-MiniLM-L6-v2'
-VIETNAMESE_EMBEDDING_MODEL = 'keepitreal/vietnamese-sbert'
-
-# Vector database
-QDRANT_HOST = "localhost"
-QDRANT_PORT = 6333
-QDRANT_COLLECTION_PREFIX = "rag_collection"
+# ============================================================
+# VECTOR DATABASE (QDRANT)
+# ============================================================
+QDRANT_HOST = os.getenv('QDRANT_SERVER', 'http://localhost')
+QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
+QDRANT_COLLECTION_NAME = os.getenv('QDRANT_COLLECTION_NAME', 'rag_chatbot_collection')
 
 # Search options
 VECTOR_SEARCH = "Vector Search"
 KEYWORDS_SEARCH = "Keywords Search"
 HYDE_SEARCH = "Hyde Search"
 
-# File types
+# ============================================================
+# FILE TYPES
+# ============================================================
 SUPPORTED_FILE_TYPES = ["csv", "json", "pdf", "docx", "doc", "xlsx"]
 
-# UI Messages
+# ============================================================
+# UI MESSAGES
+# ============================================================
 MSG_SELECT_LANGUAGE = "Please select a language first"
 MSG_UPLOAD_DATA = "Please upload and save data first"
 MSG_SELECT_LLM = "Please select and configure LLM first"
 MSG_DATA_SAVED_SUCCESS = "Data saved successfully!"
 MSG_EXPORT_SUCCESS = "Chatbot exported successfully!"
 
-QDRANT_SERVER = os.getenv('QDRANT_SERVER', 'http://localhost')
-QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
-COLLECTION_NAME = os.getenv('QDRANT_SERVER', 'rag_chatbot_collection')
-
-# OPENAI_API_KEY
+# ============================================================
+# API KEYS
+# ============================================================
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')

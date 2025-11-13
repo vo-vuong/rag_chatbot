@@ -9,6 +9,8 @@ from typing import Any, Dict
 import pandas as pd
 import streamlit as st
 
+from config.constants import DEFAULT_SYSTEM_PROMPT, PAGE_CHAT
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -34,6 +36,10 @@ class SessionManager:
         """Set default values for all session state variables."""
         defaults = {
             # ============================================================
+            # PAGE NAVIGATION
+            # ============================================================
+            'current_page': PAGE_CHAT,  # Current page: 'chat' or 'upload'
+            # ============================================================
             # LANGUAGE & EMBEDDING CONFIGURATION
             # ============================================================
             'language': None,  # 'en', 'vi', or None
@@ -43,8 +49,6 @@ class SessionManager:
             'embedding_model_name': None,  # Model identifier
             'embedding_api_key': None,  # API key for online providers
             'embedding_dimension': None,  # Vector dimension
-            # Deprecated (keep for backward compatibility)
-            'embedding_model': None,  # Old SentenceTransformer instance
             # ============================================================
             # LLM CONFIGURATION
             # ============================================================
@@ -56,12 +60,14 @@ class SessionManager:
             'local_llms': None,  # Local LLM instance
             'model_version': None,  # Specific model version
             'selected_model_display': None,  # Display name
+            'llm_model': None,  # OpenAILLM instance
+            'llm_model_name': None,  # Model name (e.g., "gpt-4o-mini")
+            'system_prompt': DEFAULT_SYSTEM_PROMPT,  # System prompt
+            'temperature': 0.7,  # LLM temperature
             # ============================================================
             # VECTOR DATABASE (QDRANT)
             # ============================================================
-            'qdrant_client': None,  # QdrantManager instance
             'qdrant_manager': None,  # QdrantManager instance
-            'collection': None,  # Deprecated
             'collection_name': None,  # Collection name
             # ============================================================
             # DATA MANAGEMENT
@@ -82,6 +88,7 @@ class SessionManager:
             # ============================================================
             'search_option': 'Vector Search',
             'number_docs_retrieval': 3,
+            'score_threshold': 0.5,  # Minimum similarity score
             # ============================================================
             # CHAT HISTORY
             # ============================================================
@@ -90,6 +97,7 @@ class SessionManager:
             # UI STATE
             # ============================================================
             'open_dialog': None,
+            'show_settings': False,  # Show advanced settings
         }
 
         for key, value in defaults.items():
@@ -114,7 +122,7 @@ class SessionManager:
 
     def update(self, updates: Dict[str, Any]) -> None:
         """Update multiple session state values."""
-        logger.debug("Updating %s value", len(updates))
+        logger.debug("Updating %s values", len(updates))
         for key, value in updates.items():
             st.session_state[key] = value
             logger.debug("Updated '%s' = %s", key, value)
@@ -163,13 +171,6 @@ class SessionManager:
     # VALIDATION & CHECK METHODS
     # ============================================================
 
-    def is_language_configured(self) -> bool:
-        """Check if language is configured."""
-        language = self.get('language')
-        is_configured = language is not None
-        logger.debug("Language configured: %s", is_configured)
-        return is_configured
-
     def is_embedding_configured(self) -> bool:
         """Check if embedding strategy is configured."""
         embedding_strategy = self.get('embedding_strategy')
@@ -179,37 +180,48 @@ class SessionManager:
 
     def is_llm_configured(self) -> bool:
         """Check if LLM is configured."""
-        online_llms = self.get('online_llms')
-        local_llms = self.get('local_llms')
-        is_configured = online_llms is not None or local_llms is not None
+        llm_model = self.get('llm_model')
+        is_configured = llm_model is not None
+        # online_llms = self.get('online_llms')
+        # local_llms = self.get('local_llms')
+        # is_configured = online_llms is not None or local_llms is not None
         logger.debug("LLM configured: %s", is_configured)
         return is_configured
 
-    def is_data_loaded(self) -> bool:
-        """Check if data is loaded to vector DB."""
-        data_saved = self.get('data_saved_success', False)
+    def is_qdrant_connected(self) -> bool:
+        """Check if Qdrant is connected."""
         qdrant_manager = self.get('qdrant_manager')
-        is_loaded = data_saved and qdrant_manager is not None
-        logger.debug("Data loaded: %s", is_loaded)
-        return is_loaded
+        is_connected = qdrant_manager is not None
+        logger.debug("Qdrant connected: %s", is_connected)
+        return is_connected
+
+    def has_documents(self) -> bool:
+        """Check if there are documents in Qdrant."""
+        if not self.is_qdrant_connected():
+            return False
+
+        qdrant_manager = self.get('qdrant_manager')
+        try:
+            stats = qdrant_manager.get_statistics()
+            doc_count = stats.get('total_documents', 0)
+            return doc_count > 0
+        except Exception:
+            return False
 
     def is_ready_for_chat(self) -> bool:
-        """Check if all prerequisites for chat are met."""
-        language_ok = self.is_language_configured()
-        embedding_ok = self.is_embedding_configured()
+        """Check if system is ready for chat (with or without RAG)."""
+        # Minimum: Need LLM configured
         llm_ok = self.is_llm_configured()
-        data_ok = self.is_data_loaded()
+        embedding_ok = self.is_embedding_configured()
 
-        is_ready = (
-            language_ok and embedding_ok and llm_ok and data_ok
-        )
+        # Can chat without documents (LLM only mode)
+        is_ready = llm_ok and embedding_ok
+
         logger.debug(
-            "Ready for chat: %s " "(lang:%s, emb:%s, llm:%s, " "data:%s)",
+            "Ready for chat: %s (llm:%s, embedding:%s)",
             is_ready,
-            language_ok,
-            embedding_ok,
             llm_ok,
-            data_ok
+            embedding_ok,
         )
         return is_ready
 
@@ -219,37 +231,49 @@ class SessionManager:
 
     def get_config_summary(self) -> Dict[str, str]:
         """Get configuration summary for display."""
-        collection_name = self.get('collection_name', 'Not set')
-        if collection_name and len(collection_name) > 30:
-            collection_name = collection_name[:27] + "..."
+        qdrant_manager = self.get('qdrant_manager')
+
+        if qdrant_manager:
+            try:
+                stats = qdrant_manager.get_statistics()
+                doc_count = stats.get('total_documents', 0)
+                collection_name = stats.get('collection_name', 'N/A')
+            except Exception:
+                doc_count = 0
+                collection_name = 'N/A'
+        else:
+            doc_count = 0
+            collection_name = 'Not connected'
+
+        # check llm_model
+        llm_model = self.get('llm_model')
+        llm_name = llm_model.get_model_name() if llm_model else 'Not configured'
 
         embedding_strategy = self.get('embedding_strategy')
-        embedding_info = 'Not configured'
-        if embedding_strategy:
-            provider = self.get('embedding_provider', 'Unknown')
-            model = self.get('embedding_model_name', 'Unknown')
-            embedding_info = f"{provider.upper()}: {model}"
+        embedding_name = (
+            embedding_strategy.get_model_name()
+            if embedding_strategy
+            else 'Not configured'
+        )
 
         return {
-            'collection_name': collection_name,
-            'llm_model': self.get('llm_name', 'Not selected'),
-            'llm_type': self.get('llm_type', 'Not specified'),
-            'language': self.get('language', 'Not selected'),
-            'embedding': embedding_info,
-            'chunk_size': str(self.get('chunk_size', 'Not set')),
-            'num_retrieval': str(self.get('number_docs_retrieval', 'Not set')),
-            'data_saved': 'Yes' if self.get('data_saved_success') else 'No',
-            'chunking_option': self.get('chunkOption', 'Not selected'),
+            'llm_model': llm_name,
+            'embedding_model': embedding_name,
+            'collection': collection_name,
+            'total_docs': str(doc_count),
+            'num_retrieval': str(self.get('number_docs_retrieval', 3)),
+            'temperature': str(self.get('temperature', 0.7)),
+            'score_threshold': str(self.get('score_threshold', 0.5)),
         }
 
     def get_status_summary(self) -> Dict[str, bool]:
         """Get boolean status of major components."""
         return {
-            'Language': self.is_language_configured(),
             'Embedding': self.is_embedding_configured(),
             'LLM': self.is_llm_configured(),
-            'Data': self.is_data_loaded(),
-            'Ready for Chat': self.is_ready_for_chat(),
+            'Qdrant': self.is_qdrant_connected(),
+            'Documents': self.has_documents(),
+            'Ready': self.is_ready_for_chat(),
         }
 
 

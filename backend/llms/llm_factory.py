@@ -1,137 +1,68 @@
-from abc import ABC, abstractmethod
+from typing import List
 
-
-class LLMAdapter(ABC):
-    """Abstract adapter for LLM providers."""
-
-    @abstractmethod
-    def generate_content(self, prompt: str) -> str:
-        """
-        Generate content from prompt.
-
-        Args:
-            prompt: Input prompt
-
-        Returns:
-            Generated text response
-        """
-
-    @abstractmethod
-    def is_available(self) -> bool:
-        """
-        Check if LLM is available and configured.
-
-        Returns:
-            True if available, False otherwise
-        """
-
-
-class OnlineLLMAdapter(LLMAdapter):
-    """Adapter for online LLM providers (Gemini, OpenAI, etc.)."""
-
-    def __init__(self, provider_name: str, api_key: str, model_version: str):
-        """
-        Initialize online LLM adapter.
-
-        Args:
-            provider_name: Name of provider ('Gemini', 'OpenAI')
-            api_key: API key for authentication
-            model_version: Model version to use
-        """
-        self.provider_name = provider_name
-        self.api_key = api_key
-        self.model_version = model_version
-        self._client = None
-
-    def generate_content(self, prompt: str) -> str:
-        """
-        Generate content using online API.
-
-        Args:
-            prompt: Input prompt
-
-        Returns:
-            Generated text
-        """
-        # TODO: Implement API calls to Gemini or OpenAI
-        # 1. Initialize client if not already done
-        # 2. Send prompt to API
-        # 3. Parse and return response
-        return "Generated response from online LLM"
-
-    def is_available(self) -> bool:
-        """Check if API key is configured."""
-        return bool(self.api_key)
-
-
-class LocalLLMAdapter(LLMAdapter):
-    """Adapter for local LLM providers (Ollama)."""
-
-    def __init__(self, model_name: str, host: str = "localhost", port: int = 11434):
-        """
-        Initialize local LLM adapter.
-
-        Args:
-            model_name: Name of local model
-            host: Ollama host
-            port: Ollama port
-        """
-        self.model_name = model_name
-        self.host = host
-        self.port = port
-        self._client = None
-
-    def generate_content(self, prompt: str) -> str:
-        """
-        Generate content using local model.
-
-        Args:
-            prompt: Input prompt
-
-        Returns:
-            Generated text
-        """
-        # TODO: Implement Ollama API call
-        # 1. Connect to Ollama server
-        # 2. Send prompt with model name
-        # 3. Return generated response
-        return "Generated response from local LLM"
-
-    def is_available(self) -> bool:
-        """Check if Ollama server is running."""
-        # TODO: Implement health check
-        pass
+from backend.llms.gemini_llm import GeminiLLM
+from backend.llms.local_llm import LocalLLMStrategy
+from backend.llms.online_llm import OnlineLLMStrategy
+from backend.llms.openai_llm import OpenAILLM
 
 
 class LLMFactory:
     """
     Factory for creating LLM adapters.
-    Implements Factory pattern for LLM creation.
+    Supports both Online and Local LLM strategies.
     """
+
+    # Online provider registry
+    ONLINE_PROVIDERS = {
+        "openai": OpenAILLM,
+        "gemini": GeminiLLM,
+    }
 
     @staticmethod
     def create_online_llm(
-        provider_name: str, api_key: str, model_version: str
-    ) -> OnlineLLMAdapter:
+        provider_name: str,
+        api_key: str,
+        model_version: str,
+        **kwargs,
+    ) -> OnlineLLMStrategy:
         """
         Create online LLM adapter.
 
         Args:
-            provider_name: Provider name ('Gemini', 'OpenAI')
+            provider_name: Provider name ('openai', 'gemini')
             api_key: API key
             model_version: Model version
+            **kwargs: Additional provider-specific arguments
 
         Returns:
             Online LLM adapter instance
+
+        Raises:
+            ValueError: If provider is not supported
         """
-        return OnlineLLMAdapter(provider_name, api_key, model_version)
+        provider_name = provider_name.lower()
+
+        if provider_name not in LLMFactory.ONLINE_PROVIDERS:
+            raise ValueError(
+                f"Unsupported online provider: {provider_name}. "
+                f"Available: {list(LLMFactory.ONLINE_PROVIDERS.keys())}"
+            )
+
+        provider_class = LLMFactory.ONLINE_PROVIDERS[provider_name]
+        return provider_class(
+            api_key=api_key,
+            model_version=model_version,
+            **kwargs,
+        )
 
     @staticmethod
     def create_local_llm(
-        model_name: str, host: str = "localhost", port: int = 11434
-    ) -> LocalLLMAdapter:
+        model_name: str,
+        host: str = "localhost",
+        port: int = 11434,
+    ) -> LocalLLMStrategy:
         """
-        Create local LLM adapter.
+        Create local LLM adapter (Ollama).
 
         Args:
             model_name: Local model name
@@ -141,4 +72,13 @@ class LLMFactory:
         Returns:
             Local LLM adapter instance
         """
-        return LocalLLMAdapter(model_name, host, port)
+        return LocalLLMStrategy(
+            model_name=model_name,
+            host=host,
+            port=port,
+        )
+
+    @staticmethod
+    def get_available_online_providers() -> List[str]:
+        """Get list of supported online providers."""
+        return list(LLMFactory.ONLINE_PROVIDERS.keys())

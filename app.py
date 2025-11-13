@@ -2,29 +2,30 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from backend.session_manager import SessionManager
-from ui.chatbot_interface import ChatbotUI
+from config.constants import PAGE_CHAT, PAGE_UPLOAD
+from ui.chat_main import ChatMainUI
 from ui.data_upload import DataUploadUI
-from ui.language_setup import LanguageSetupUI
-from ui.llm_setup import LLMSetupUI
-from ui.sidebar_config import SidebarConfig
+from ui.sidebar_navigation import SidebarNavigation
 
 load_dotenv()
 
 
 class RAGChatbotApp:
+    """Main application class with chat-first architecture."""
+
     def __init__(self):
         self.session_manager = SessionManager()
         self._initialize_ui_components()
 
     def _initialize_ui_components(self):
         """Initialize all UI components."""
-        self.language_ui = LanguageSetupUI(self.session_manager)
-        self.data_ui = DataUploadUI(self.session_manager)
-        self.llm_ui = LLMSetupUI(self.session_manager)
-        self.chatbot_ui = ChatbotUI(self.session_manager)
-        self.sidebar = SidebarConfig(self.session_manager)
+        self.sidebar_nav = SidebarNavigation(self.session_manager)
+        self.chat_ui = ChatMainUI(self.session_manager)
+        self.upload_ui = DataUploadUI(self.session_manager)
 
     def run(self):
+        """Run the application."""
+        # Page config
         st.set_page_config(
             page_title="RAG Chatbot",
             page_icon="🤖",
@@ -32,111 +33,95 @@ class RAGChatbotApp:
             initial_sidebar_state="expanded",
         )
 
-        # Main header
-        st.title("RAG Chatbot")
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.caption("Design your own chatbot using the RAG system.")
+        # Render sidebar (always visible)
+        self.sidebar_nav.render()
 
+        # Get current page
+        current_page = self.session_manager.get("current_page", PAGE_CHAT)
+
+        # Render appropriate page
+        if current_page == PAGE_UPLOAD:
+            self._render_upload_page()
+        else:
+            self._render_chat_page()
+
+    def _render_chat_page(self) -> None:
+        """Render main chat page."""
+        # Header
+        st.title("💬 Chat with Your Documents")
+        st.caption(
+            "Ask questions and get AI-powered answers. "
+            "Upload documents via sidebar for enhanced responses."
+        )
+        st.markdown("---")
+
+        # Render chat interface
+        try:
+            self.chat_ui.render()
+        except Exception as e:
+            st.error(f"Error in chat interface: {str(e)}")
+
+    def _render_upload_page(self) -> None:
+        """Render upload page."""
+        # Header
+        st.title("📁 Upload Documents")
+        st.caption("Upload and process documents for the RAG system.")
+
+        # Reset button
+        col1, col2 = st.columns([3, 1])
         with col2:
-            if st.button("🗑️ Reset All", help="Clear all data and start over"):
+            if st.button("🗑️ Reset All", help="Clear all data"):
                 if st.session_state.get("confirm_reset"):
                     self.session_manager.clear()
                     st.success("✅ Reset complete!")
                     st.rerun()
                 else:
                     st.session_state.confirm_reset = True
-                    st.warning("⚠️ Click again to confirm reset")
+                    st.warning("⚠️ Click again to confirm")
 
         st.markdown("---")
 
-        # Section counter
-        section_num = 1
-
-        # 1. Language Setup
+        # Render upload interface
         try:
-            self.language_ui.render(section_num)
-            st.markdown("---")
-            section_num += 1
+            self.upload_ui.render(header_number=1)
         except Exception as e:
-            st.error(f"Error in Language Setup: {str(e)}")
+            st.error(f"Error in upload interface: {str(e)}")
 
-        # 2. Data Source Setup
-        try:
-            self.data_ui.render(section_num)
-            st.markdown("---")
-            section_num += 1
-        except Exception as e:
-            st.error(f"Error in Data Upload: {str(e)}")
-
-        # 3. Data Status
-        self._render_data_status(section_num)
-        st.markdown("---")
-        section_num += 1
-
-        # 4. LLM Setup
-        try:
-            self.llm_ui.render(section_num)
-            st.markdown("---")
-            section_num += 1
-        except Exception as e:
-            st.error(f"Error in LLM Setup: {str(e)}")
-
-        # 5. Interactive Chatbot
-        try:
-            self.chatbot_ui.render(section_num)
-        except Exception as e:
-            st.error(f"Error in Chatbot: {str(e)}")
-
-        # Render sidebar configuration
-        try:
-            self.sidebar.render()
-        except Exception as e:
-            st.sidebar.error(f"Error in sidebar: {str(e)}")
-
-    def _render_data_status(self, header_num: int):
-        """
-        Render data status section.
-
-        Args:
-            header_num: Section number
-        """
-        header_text = f"{header_num}. Data Status"
-
+        # Show data status if saved
         if self.session_manager.get("data_saved_success"):
-            header_text += " ✅"
-            st.header(header_text)
+            st.markdown("---")
+            self._render_upload_success()
 
-            col1, col2 = st.columns(2)
+    def _render_upload_success(self) -> None:
+        """Render upload success status."""
+        st.success("✅ Data uploaded successfully!")
+
+        chunks_df = self.session_manager.get("chunks_df")
+        if chunks_df is not None and not chunks_df.empty:
+            col1, col2, col3 = st.columns(3)
+
             with col1:
-                st.success("✅ Data saved successfully!")
-            with col2:
-                collection_name = self.session_manager.get("collection_name")
-                if collection_name:
-                    st.info(f"📦 Collection: `{collection_name}`")
+                st.metric("Total Chunks", len(chunks_df))
 
-            # Show statistics
-            chunks_df = self.session_manager.get("chunks_df")
-            if chunks_df is not None and not chunks_df.empty:
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    st.metric("Total Chunks", len(chunks_df))
-                with col2:
-                    st.metric("Columns", len(chunks_df.columns))
-                with col3:
-                    avg_length = (
-                        chunks_df['chunk'].str.len().mean()
-                        if 'chunk' in chunks_df.columns
-                        else 0
-                    )
-                    st.metric("Avg Chunk Length", f"{int(avg_length)} chars")
-        else:
-            st.header(header_text)
-            st.warning("⚠️ No data loaded yet. Please upload and save data first.")
+            with col2:
+                st.metric("Columns", len(chunks_df.columns))
+
+            with col3:
+                avg_length = (
+                    chunks_df['chunk'].str.len().mean()
+                    if 'chunk' in chunks_df.columns
+                    else 0
+                )
+                st.metric("Avg Length", f"{int(avg_length)} chars")
+
+        # Button to go back to chat
+        if st.button("💬 Go to Chat", type="primary"):
+            self.session_manager.set("current_page", PAGE_CHAT)
+            st.rerun()
 
 
 def main():
-    """Main entry point for the application."""
+    """Main entry point."""
     app = RAGChatbotApp()
     app.run()
 

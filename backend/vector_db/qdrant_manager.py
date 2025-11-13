@@ -1,21 +1,5 @@
 """
 Qdrant Vector Database Manager.
-
-This module manages all interactions with the Qdrant vector database,
-including collection management, document storage, and similarity search.
-
-Strategy: Single Collection + Metadata Filtering
-- Collection name: "rag_chatbot_main" (fixed)
-- Metadata fields: language, timestamp, source_file, etc.
-- Full row data stored in payload for easy retrieval
-
-Usage:
-    from backend.vector_db.qdrant_manager import QdrantManager
-
-    manager = QdrantManager()
-    manager.ensure_collection(dimension=1536, language="en")
-    manager.add_documents(chunks_df, embeddings, language="en")
-    results = manager.search(query_vector, top_k=5)
 """
 
 import logging
@@ -35,17 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class QdrantManager:
-    """
-    Manager for Qdrant vector database operations.
-
-    This class handles all interactions with Qdrant, implementing a single
-    collection strategy with metadata-based filtering for efficient data
-    management and retrieval.
-
-    Attributes:
-        client: QdrantClient instance
-        collection_name: Name of the Qdrant collection
-    """
+    """Manager for Qdrant vector database operations."""
 
     def __init__(
         self,
@@ -71,14 +45,8 @@ class QdrantManager:
             raise
 
     def is_healthy(self) -> bool:
-        """
-        Check if Qdrant server is healthy and responsive.
-
-        Returns:
-            True if server is healthy, False otherwise
-        """
+        """Check if Qdrant server is healthy."""
         try:
-            # Try to get collections as health check
             self.client.get_collections()
             logger.info("Qdrant server is healthy")
             return True
@@ -87,12 +55,7 @@ class QdrantManager:
             return False
 
     def collection_exists(self) -> bool:
-        """
-        Check if the collection exists.
-
-        Returns:
-            True if collection exists, False otherwise
-        """
+        """Check if the collection exists."""
         try:
             collections = self.client.get_collections().collections
             exists = any(col.name == self.collection_name for col in collections)
@@ -103,12 +66,7 @@ class QdrantManager:
             return False
 
     def get_collection_info(self) -> Optional[Dict[str, Any]]:
-        """
-        Get collection information including vector config and count.
-
-        Returns:
-            Dictionary with collection info or None if collection doesn't exist
-        """
+        """Get collection information."""
         if not self.collection_exists():
             return None
 
@@ -125,47 +83,30 @@ class QdrantManager:
             return None
 
     def ensure_collection(self, dimension: int, distance: str = "Cosine") -> bool:
-        """
-        Ensure collection exists with correct configuration.
-
-        If collection exists with different dimension, log warning but continue.
-        If collection doesn't exist, create it.
-
-        Args:
-            dimension: Vector dimension size (e.g., 1536 for OpenAI)
-            distance: Distance metric ("Cosine", "Euclid", "Dot")
-
-        Returns:
-            True if collection is ready, False otherwise
-        """
+        """Ensure collection exists with correct configuration."""
         try:
             if self.collection_exists():
-                # Verify dimension matches
                 info = self.get_collection_info()
                 if info:
-                    # Get vector dimension from config
                     current_dim = info['config'].params.vectors.size
 
                     if current_dim != dimension:
                         logger.warning(
-                            f"Collection {self.collection_name} exists with "
-                            f"dimension {current_dim}, but requested {dimension}. "
-                            f"Using existing collection."
+                            f"Collection exists with dimension {current_dim}, "
+                            f"requested {dimension}. Using existing collection."
                         )
                     else:
                         logger.info(
-                            f"Collection {self.collection_name} already exists "
+                            f"Collection {self.collection_name} exists "
                             f"with correct dimension {dimension}"
                         )
                 return True
 
             # Create new collection
             logger.info(
-                f"Creating collection {self.collection_name} "
-                f"with dimension {dimension}"
+                f"Creating collection {self.collection_name} with dimension {dimension}"
             )
 
-            # Map distance string to Qdrant Distance enum
             distance_map = {
                 "Cosine": models.Distance.COSINE,
                 "Euclid": models.Distance.EUCLID,
@@ -191,57 +132,52 @@ class QdrantManager:
         self,
         chunks_df: pd.DataFrame,
         embeddings: List[List[float]],
-        language: str,
+        language: Optional[str] = None,
         source_file: str = "unknown",
         batch_size: int = 100,
     ) -> bool:
         """
-        Add documents to Qdrant with full payload data.
+        Add documents to Qdrant (no session_id).
 
         Args:
             chunks_df: DataFrame containing chunks and metadata
-            embeddings: List of embedding vectors (must match chunks_df length)
-            language: Language code ("en" or "vi")
-            source_file: Source file name for metadata
-            batch_size: Batch size for uploading points
+            embeddings: List of embedding vectors
+            language: Language code ("en" or "vi") - optional
+            source_file: Source file name
+            batch_size: Batch size for uploading
 
         Returns:
             True if successful, False otherwise
-
-        Raises:
-            ValueError: If chunks_df and embeddings length mismatch
         """
-
-        # Wrong logic
         if len(chunks_df) != len(embeddings):
             raise ValueError(
                 f"Mismatch: {len(chunks_df)} chunks but {len(embeddings)} embeddings"
             )
 
         try:
-            logger.info(f"Adding {len(chunks_df)} documents to {self.collection_name} ")
+            logger.info(f"Adding {len(chunks_df)} documents to {self.collection_name}")
 
-            # Prepare points for batch upload
             points = []
             timestamp = datetime.now().isoformat()
 
             for idx, (_, row) in enumerate(chunks_df.iterrows()):
-                # Generate unique ID
                 point_id = str(uuid.uuid4())
 
-                # Prepare payload with full row data
+                # Simple metadata (no session_id)
                 payload = {
                     "chunk": row.get("chunk", ""),
-                    "language": language,
                     "source_file": source_file,
                     "timestamp": timestamp,
                     "chunk_index": idx,
                 }
 
+                # Add language if provided
+                if language:
+                    payload["language"] = language
+
                 # Add all other columns from dataframe
                 for col in chunks_df.columns:
                     if col not in payload and col != "chunk":
-                        # Convert to JSON-serializable type
                         value = row[col]
                         if pd.isna(value):
                             payload[col] = None
@@ -250,7 +186,6 @@ class QdrantManager:
                         else:
                             payload[col] = str(value)
 
-                # Create point
                 point = models.PointStruct(
                     id=point_id, vector=embeddings[idx], payload=payload
                 )
@@ -261,7 +196,7 @@ class QdrantManager:
                 batch = points[i : i + batch_size]
                 self.client.upsert(collection_name=self.collection_name, points=batch)
                 logger.debug(
-                    f"Uploaded batch {i // batch_size + 1}: " f"{len(batch)} points"
+                    f"Uploaded batch {i // batch_size + 1}: {len(batch)} points"
                 )
 
             logger.info(f"Successfully added {len(points)} documents to Qdrant")
@@ -274,45 +209,37 @@ class QdrantManager:
     def search(
         self,
         query_vector: List[float],
-        language: Optional[str] = None,
         top_k: int = 5,
         score_threshold: float = 0.0,
+        language: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Search for similar vectors in Qdrant.
+        Search for similar vectors
 
         Args:
             query_vector: Query embedding vector
-            language: Optional language filter
             top_k: Number of results to return
-            score_threshold: Minimum similarity score (0.0 to 1.0)
+            score_threshold: Minimum similarity score
+            language: Optional language filter (not used by default)
 
         Returns:
             List of search results with payload and score
         """
         try:
-            logger.info(
-                f"Searching in {self.collection_name} "
-                f"(top_k: {top_k}, language: {language})"
-            )
+            logger.info(f"Searching in {self.collection_name} (top_k: {top_k})")
 
-            # Build filter conditions
-            must_conditions = []
-
-            if language:
-                must_conditions.append(
-                    models.FieldCondition(
-                        key="language",
-                        match=models.MatchValue(value=language),
-                    )
-                )
-
-            # Create filter if conditions exist
+            # No filter by default (search all documents)
             search_filter = None
-            if must_conditions:
-                search_filter = models.Filter(must=must_conditions)
 
-            # Perform search
+            # Optional: Can enable language filter if needed
+            # if language:
+            #     search_filter = models.Filter(
+            #         must=[models.FieldCondition(
+            #             key="language",
+            #             match=models.MatchValue(value=language)
+            #         )]
+            #     )
+
             search_results = self.client.search(
                 collection_name=self.collection_name,
                 query_vector=query_vector,
@@ -321,7 +248,6 @@ class QdrantManager:
                 score_threshold=score_threshold,
             )
 
-            # Format results
             results = []
             for hit in search_results:
                 results.append(
@@ -340,12 +266,7 @@ class QdrantManager:
             return []
 
     def delete_collection(self) -> bool:
-        """
-        Delete the entire collection.
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Delete the entire collection."""
         try:
             if not self.collection_exists():
                 logger.warning(f"Collection {self.collection_name} does not exist")
@@ -361,12 +282,7 @@ class QdrantManager:
             return False
 
     def get_statistics(self) -> Dict[str, Any]:
-        """
-        Get collection statistics.
-
-        Returns:
-            Dictionary with statistics (total documents, etc.)
-        """
+        """Get collection statistics."""
         try:
             if not self.collection_exists():
                 return {"error": "Collection does not exist"}
@@ -374,10 +290,6 @@ class QdrantManager:
             info = self.get_collection_info()
             if info is None:
                 return {"error": "Failed to retrieve collection info"}
-
-            # TODO: Add more detailed statistics
-            # - Count by language
-            # - Latest upload timestamp
 
             return {
                 "collection_name": self.collection_name,

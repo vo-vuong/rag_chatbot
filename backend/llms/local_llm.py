@@ -1,9 +1,20 @@
 import json
+import logging
 from typing import Iterator, List, Optional
 
 import requests
 
 from backend.llms.llm_strategy import LLMStrategy
+
+# Import PromptBuilder for prompt construction
+try:
+    from backend.prompts.prompt_builder import PromptBuilder
+
+    PROMPT_BUILDER_AVAILABLE = True
+except ImportError:
+    PROMPT_BUILDER_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class LocalLLMStrategy(LLMStrategy):
@@ -87,6 +98,11 @@ class LocalLLMStrategy(LLMStrategy):
         chat_history: Optional[List[dict]] = None,
     ) -> str:
         """Build prompt with context and history."""
+        if context and PROMPT_BUILDER_AVAILABLE:
+            # Use PromptBuilder for RAG prompts
+            return PromptBuilder.build_rag_prompt(query=prompt, context=context)
+
+        # Legacy format
         parts = []
 
         # Add chat history if available

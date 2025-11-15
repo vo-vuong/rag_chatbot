@@ -47,18 +47,6 @@ OPENAI_LLM_MODELS = {
     "GPT-3.5 Turbo": "gpt-3.5-turbo",
 }
 
-# Default System Prompt
-DEFAULT_SYSTEM_PROMPT = """You are a helpful AI assistant powered by RAG (Retrieval Augmented Generation).
-
-When answering questions:
-1. Base your answers primarily on the provided context from the documents
-2. If the context doesn't contain enough information, clearly state this
-3. Be concise and accurate
-4. Respond in the same language as the user's question
-5. If you reference specific information, indicate it comes from the documents
-
-Always maintain a helpful and professional tone."""
-
 # ============================================================
 # CHUNKING OPTIONS
 # ============================================================

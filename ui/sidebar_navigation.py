@@ -12,7 +12,6 @@ from backend.session_manager import SessionManager
 from backend.vector_db.qdrant_manager import QdrantManager
 from config.constants import (
     DEFAULT_LLM_MODEL,
-    DEFAULT_SYSTEM_PROMPT,
     OPENAI,
     OPENAI_API_KEY,
     OPENAI_DEFAULT_EMBEDDING_MODEL,
@@ -128,9 +127,9 @@ class SidebarNavigation:
                 llm_model_name = self.session_manager.get(
                     "llm_model_name", DEFAULT_LLM_MODEL
                 )
-                system_prompt = self.session_manager.get(
-                    "system_prompt", DEFAULT_SYSTEM_PROMPT
-                )
+
+                # Get system prompt from active template
+                system_prompt = self.session_manager.get_active_system_prompt()
 
                 llm_model = LLMFactory.create_online_llm(
                     provider_name=OPENAI,
@@ -190,9 +189,9 @@ class SidebarNavigation:
             # Reinitialize LLM if already configured
             if self.session_manager.is_llm_configured():
                 api_key = self.session_manager.get("llm_api_key")
-                system_prompt = self.session_manager.get(
-                    "system_prompt", DEFAULT_SYSTEM_PROMPT
-                )
+
+                # Get system prompt from active template
+                system_prompt = self.session_manager.get_active_system_prompt()
 
                 llm_model = LLMFactory.create_online_llm(
                     provider_name=OPENAI,
@@ -242,31 +241,157 @@ class SidebarNavigation:
             if llm_model:
                 llm_model.set_temperature(temperature)
 
-            # System Prompt
-            st.markdown("**System Prompt:**")
-            current_prompt = self.session_manager.get(
-                "system_prompt", DEFAULT_SYSTEM_PROMPT
-            )
+            # System Prompt Template Selector
+            st.markdown("**System Prompt Template:**")
 
-            system_prompt = st.text_area(
-                "Customize assistant behavior",
-                value=current_prompt,
-                height=200,
-                help="Instructions for how the assistant should behave",
-            )
+            # Get available system templates
+            prompt_manager = self.session_manager.get('prompt_manager')
+            if prompt_manager:
+                system_templates = prompt_manager.list_templates(category='system')
+                template_names = [t.name for t in system_templates]
+                template_display = {
+                    t.name: f"{t.name} - {t.description}" for t in system_templates
+                }
 
-            if system_prompt != current_prompt:
-                self.session_manager.set("system_prompt", system_prompt)
+                current_template = self.session_manager.get(
+                    'active_system_template', 'system_helpful_assistant'
+                )
 
-                # Update LLM system prompt if configured
-                if llm_model:
-                    llm_model.set_system_prompt(system_prompt)
+                # Template selector
+                selected_template = st.selectbox(
+                    "Select template",
+                    options=template_names,
+                    index=(
+                        template_names.index(current_template)
+                        if current_template in template_names
+                        else 0
+                    ),
+                    format_func=lambda x: template_display[x],
+                    help="Choose a system prompt template",
+                )
 
-            if st.button("🔄 Reset to Default Prompt"):
-                self.session_manager.set("system_prompt", DEFAULT_SYSTEM_PROMPT)
-                if llm_model:
-                    llm_model.set_system_prompt(DEFAULT_SYSTEM_PROMPT)
-                st.rerun()
+                # Update if changed
+                if selected_template != current_template:
+                    self.session_manager.set(
+                        'active_system_template', selected_template
+                    )
+
+                    # Update LLM system prompt if configured
+                    if llm_model:
+                        new_prompt = self.session_manager.get_active_system_prompt()
+                        llm_model.set_system_prompt(new_prompt)
+                        st.success(f"✅ Switched to: {selected_template}")
+                        st.rerun()
+
+                # Show preview with checkbox toggle
+                show_preview = st.checkbox("📝 Show Template Preview", value=False)
+                if show_preview:
+                    template = prompt_manager.get_template(selected_template)
+                    if template:
+                        st.caption("Template content:")
+                        st.code(template.template, language="text")
+
+            # RAG Template Selector
+            st.markdown("---")
+            st.markdown("**RAG Prompt Template:**")
+
+            if prompt_manager:
+                rag_templates = prompt_manager.list_templates(category='rag')
+                rag_template_names = [t.name for t in rag_templates]
+                rag_template_display = {
+                    t.name: f"{t.name.replace('rag_qa_', '').title()} - {t.description}"
+                    for t in rag_templates
+                }
+
+                current_rag_template = self.session_manager.get(
+                    'active_rag_template', 'rag_qa_with_history'
+                )
+
+                # RAG template selector
+                selected_rag_template = st.selectbox(
+                    "Select RAG template",
+                    options=rag_template_names,
+                    index=(
+                        rag_template_names.index(current_rag_template)
+                        if current_rag_template in rag_template_names
+                        else 0
+                    ),
+                    format_func=lambda x: rag_template_display.get(x, x),
+                    help="Choose how the system formats RAG questions",
+                    key="rag_template_selector",
+                )
+
+                # Update if changed
+                if selected_rag_template != current_rag_template:
+                    self.session_manager.set(
+                        'active_rag_template', selected_rag_template
+                    )
+                    st.success(f"✅ RAG template: {selected_rag_template}")
+
+                # Show preview
+                show_rag_preview = st.checkbox(
+                    "📝 Show RAG Template Preview",
+                    value=False,
+                    key="rag_preview_checkbox",
+                )
+                if show_rag_preview:
+                    rag_template = prompt_manager.get_template(selected_rag_template)
+                    if rag_template:
+                        st.caption("RAG template content:")
+                        st.code(rag_template.template, language="text")
+                        st.caption(f"Variables: {', '.join(rag_template.variables)}")
+
+            # Chat Template Selector
+            st.markdown("---")
+            st.markdown("**Chat Prompt Template:**")
+
+            if prompt_manager:
+                chat_templates = prompt_manager.list_templates(category='chat')
+                chat_template_names = [t.name for t in chat_templates]
+                chat_template_display = {
+                    t.name: f"{t.name.replace('chat_', '').title()} - {t.description}"
+                    for t in chat_templates
+                }
+
+                current_chat_template = self.session_manager.get(
+                    'active_chat_template', 'chat_conversational'
+                )
+
+                # Chat template selector
+                selected_chat_template = st.selectbox(
+                    "Select chat template",
+                    options=chat_template_names,
+                    index=(
+                        chat_template_names.index(current_chat_template)
+                        if current_chat_template in chat_template_names
+                        else 0
+                    ),
+                    format_func=lambda x: chat_template_display.get(x, x),
+                    help="Choose how the system handles chat-only conversations",
+                    key="chat_template_selector",
+                )
+
+                # Update if changed
+                if selected_chat_template != current_chat_template:
+                    self.session_manager.set(
+                        'active_chat_template', selected_chat_template
+                    )
+                    st.success(f"✅ Chat template: {selected_chat_template}")
+
+                # Show preview
+                show_chat_preview = st.checkbox(
+                    "📝 Show Chat Template Preview",
+                    value=False,
+                    key="chat_preview_checkbox",
+                )
+                if show_chat_preview:
+                    chat_template = prompt_manager.get_template(selected_chat_template)
+                    if chat_template:
+                        st.caption("Chat template content:")
+                        st.code(chat_template.template, language="text")
+                        st.caption(f"Variables: {', '.join(chat_template.variables)}")
+            else:
+                st.info("Prompt templates not loaded. Using default prompt.")
 
     def _render_statistics(self) -> None:
         """Render system statistics."""

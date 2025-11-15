@@ -1,0 +1,156 @@
+version: "1.0"
+description: "Prompt templates for RAG Chatbot"
+
+prompts:
+  # ============================================================
+  # SYSTEM PROMPTS - Instructions for LLM behavior
+  # ============================================================
+
+  - name: "system_rag_assistant"
+    category: "system"
+    description: "RAG-focused assistant with strict context adherence"
+    language: "multi"
+    template: |
+      You are an AI assistant that answers questions based ONLY on provided context.
+
+      Rules:
+      - Only use information from the provided context
+      - If context doesn't contain the answer, say "I don't have enough information"
+      - Never fabricate information
+      - Always cite which part of context you used
+      - Respond in the same language as the user's question
+    variables: []
+    metadata:
+      version: "1.0"
+      strict: true
+
+  - name: "system_helpful_assistant"
+    category: "system"
+    description: "Default helpful AI assistant with RAG capabilities"
+    language: "multi"
+    template: |
+      You are a helpful AI assistant powered by RAG (Retrieval Augmented Generation).
+
+      When answering questions:
+      1. Base your answers primarily on the provided context from the documents
+      2. If the context doesn't contain enough information, clearly state this
+      3. Be concise and accurate
+      4. Respond in the same language as the user's question
+      5. If you reference specific information, indicate it comes from the documents
+
+      Always maintain a helpful and professional tone.
+    variables: []
+    metadata:
+      version: "1.0"
+      default: true
+      author: "system"
+
+  # ============================================================
+  # RAG PROMPTS - For context-based question answering
+  # ============================================================
+
+  - name: "rag_qa_with_history"
+    category: "rag"
+    description: "RAG with conversation history for context-aware answers"
+    language: "multi"
+    template: |
+      Previous conversation:
+      {chat_history}
+
+      Relevant context from documents:
+      {context}
+
+      Current question: {query}
+
+      Answer the current question using the retrieved context. Reference the 
+      conversation history when relevant to provide continuity and context-aware responses.
+    variables: ["context", "query", "chat_history"]
+    metadata:
+      version: "1.0"
+
+  - name: "rag_qa_without_history"
+    category: "rag"
+    description: "Default RAG question answering with context"
+    language: "multi"
+    template: |
+      Based on the following context from the documents:
+
+      {context}
+
+      Question: {query}
+
+      Please answer the question using the provided context. If the context doesn't 
+      contain enough information, state what is available and what is missing.
+    variables: ["context", "query"]
+    metadata:
+      version: "1.0"
+      default: true
+
+  - name: "rag_qa_with_sources"
+    category: "rag"
+    description: "RAG with explicit source attribution"
+    language: "multi"
+    template: |
+      Context from documents:
+      {context}
+
+      Question: {query}
+
+      Answer the question and cite which document sections support your answer.
+      Format: Provide your answer, then add "Source: [Document X]" for each claim.
+    variables: ["context", "query"]
+    metadata:
+      version: "1.0"
+
+  # ============================================================
+  # CHAT PROMPTS - For conversational interactions
+  # ============================================================
+
+  - name: "chat_conversational"
+    category: "chat"
+    description: "Conversational chat without retrieved context"
+    language: "multi"
+    template: |
+      {chat_history}
+
+      User: {query}
+    variables: ["query", "chat_history"]
+    metadata:
+      version: "1.0"
+
+  - name: "chat_with_context"
+    category: "chat"
+    description: "Chat with both history and retrieved context"
+    language: "multi"
+    template: |
+      Conversation history:
+      {chat_history}
+
+      Relevant information from documents:
+      {context}
+
+      User's current question: {query}
+
+      Respond naturally, taking into account both the conversation history and the 
+      retrieved information.
+    variables: ["query", "chat_history", "context"]
+    metadata:
+      version: "1.0"
+
+  # ============================================================
+  # ERROR / FALLBACK PROMPTS
+  # ============================================================
+
+  - name: "error_retrieval_failed"
+    category: "error"
+    description: "Message when document retrieval fails"
+    language: "multi"
+    template: |
+      I encountered an error while searching the documents for: {query}
+
+      Error: {error_message}
+
+      Please try again or contact support if the problem persists.
+    variables: ["query", "error_message"]
+    metadata:
+      version: "1.0"

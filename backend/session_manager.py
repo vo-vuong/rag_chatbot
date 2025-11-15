@@ -9,7 +9,8 @@ from typing import Any, Dict
 import pandas as pd
 import streamlit as st
 
-from config.constants import DEFAULT_SYSTEM_PROMPT, PAGE_CHAT
+from backend.prompts.prompt_manager import PromptManager
+from config.constants import PAGE_CHAT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -62,8 +63,9 @@ class SessionManager:
             'selected_model_display': None,  # Display name
             'llm_model': None,  # OpenAILLM instance
             'llm_model_name': None,  # Model name (e.g., "gpt-4o-mini")
-            'system_prompt': DEFAULT_SYSTEM_PROMPT,  # System prompt
+            'system_prompt': None,  # System prompt
             'temperature': 0.7,  # LLM temperature
+            'chat_mode': 'rag',  # 'rag' or 'llm_only'
             # ============================================================
             # VECTOR DATABASE (QDRANT)
             # ============================================================
@@ -98,6 +100,14 @@ class SessionManager:
             # ============================================================
             'open_dialog': None,
             'show_settings': False,  # Show advanced settings
+            # ============================================================
+            # PROMPT MANAGEMENT
+            # ============================================================
+            'prompt_manager': None,  # PromptManager instance
+            'active_system_template': 'system_helpful_assistant',
+            'active_rag_template': 'rag_qa_with_history',
+            'active_chat_template': 'chat_conversational',
+            'custom_prompts_enabled': False,
         }
 
         for key, value in defaults.items():
@@ -166,6 +176,61 @@ class SessionManager:
                 'data_saved_success': False,
             }
         )
+
+    # ============================================================
+    # PROMPT MANAGEMENT METHODS
+    # ============================================================
+
+    def initialize_prompt_manager(self) -> None:
+        """Initialize prompt manager if not already initialized."""
+        if self.get('prompt_manager') is None:
+            try:
+                prompt_manager = PromptManager()
+                self.set('prompt_manager', prompt_manager)
+                logger.info("PromptManager initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PromptManager: {e}")
+
+    def get_prompt_template(self, name: str):
+        """
+        Get a prompt template by name.
+
+        Args:
+            name: Template name
+
+        Returns:
+            PromptTemplate instance or None
+        """
+        prompt_manager = self.get('prompt_manager')
+        if prompt_manager is None:
+            self.initialize_prompt_manager()
+            prompt_manager = self.get('prompt_manager')
+
+        if prompt_manager:
+            return prompt_manager.get_template(name)
+        return None
+
+    def get_active_system_prompt(self) -> str:
+        """Get the rendered active system prompt."""
+        template_name = self.get('active_system_template', 'system_helpful_assistant')
+        template = self.get_prompt_template(template_name)
+
+        if template:
+            try:
+                return template.render()
+            except Exception as e:
+                logger.error(f"Error rendering system prompt: {e}")
+        return ""
+
+    def get_active_rag_template(self):
+        """Get the active RAG prompt template."""
+        template_name = self.get('active_rag_template', 'rag_qa_with_history')
+        return self.get_prompt_template(template_name)
+
+    def get_active_chat_template(self):
+        """Get the active chat prompt template."""
+        template_name = self.get('active_chat_template', 'chat_conversational')
+        return self.get_prompt_template(template_name)
 
     # ============================================================
     # VALIDATION & CHECK METHODS

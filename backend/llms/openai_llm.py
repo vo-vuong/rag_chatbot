@@ -8,6 +8,15 @@ from backend.llms.online_llm import OnlineLLMStrategy
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Import PromptBuilder for prompt construction
+try:
+    from backend.prompts.prompt_builder import PromptBuilder
+
+    PROMPT_BUILDER_AVAILABLE = True
+except ImportError:
+    PROMPT_BUILDER_AVAILABLE = False
+    logger.warning("PromptBuilder not available, using legacy prompt construction")
+
 
 class OpenAILLM(OnlineLLMStrategy):
     """OpenAI implementation of Online LLM strategy."""
@@ -102,10 +111,18 @@ class OpenAILLM(OnlineLLMStrategy):
         if chat_history:
             messages.extend(chat_history)
 
+        # Build user message with context if available
         if context:
-            user_message = f"""Based on the following context:
-                {context}
-                Question: {prompt}"""
+            if PROMPT_BUILDER_AVAILABLE:
+                # Use PromptBuilder for better prompt construction
+                user_message = PromptBuilder.build_rag_prompt(
+                    query=prompt, context=context
+                )
+            else:
+                # Legacy format
+                user_message = f"""Based on the following context:
+                    {context}
+                    Question: {prompt}"""
         else:
             user_message = prompt
 

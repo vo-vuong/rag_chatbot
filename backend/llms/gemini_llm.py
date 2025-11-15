@@ -1,8 +1,19 @@
+import logging
 from typing import List, Optional
 
 import google.generativeai as genai
 
 from backend.llms.online_llm import OnlineLLMStrategy
+
+# Import PromptBuilder for prompt construction
+try:
+    from backend.prompts.prompt_builder import PromptBuilder
+
+    PROMPT_BUILDER_AVAILABLE = True
+except ImportError:
+    PROMPT_BUILDER_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiLLM(OnlineLLMStrategy):
@@ -63,6 +74,11 @@ class GeminiLLM(OnlineLLMStrategy):
         chat_history: Optional[List[dict]] = None,
     ) -> str:
         """Build prompt with context and history."""
+        if context and PROMPT_BUILDER_AVAILABLE:
+            # Use PromptBuilder for RAG prompts
+            return PromptBuilder.build_rag_prompt(query=prompt, context=context)
+
+        # Legacy format
         parts = []
 
         if chat_history:

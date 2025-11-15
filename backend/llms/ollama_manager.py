@@ -180,5 +180,5 @@ def run_ollama_model(model_name: str) -> Optional[Any]:
     # 1. Create OllamaManager
     # 2. Check if container is running
     # 3. Pull model if not available
-    # 4. Return LocalLLMAdapter instance
+    # 4. Return Local llm instance
     pass

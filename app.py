@@ -15,7 +15,12 @@ class RAGChatbotApp:
 
     def __init__(self):
         self.session_manager = SessionManager()
+        self._initialize_prompt_manager()
         self._initialize_ui_components()
+
+    def _initialize_prompt_manager(self):
+        """Initialize prompt management system."""
+        self.session_manager.initialize_prompt_manager()
 
     def _initialize_ui_components(self):
         """Initialize all UI components."""
@@ -68,8 +73,8 @@ class RAGChatbotApp:
         st.caption("Upload and process documents for the RAG system.")
 
         # Reset button
-        col1, col2 = st.columns([3, 1])
-        with col2:
+        col2 = st.columns([3, 1])
+        with col2[1]:
             if st.button("🗑️ Reset All", help="Clear all data"):
                 if st.session_state.get("confirm_reset"):
                     self.session_manager.clear()

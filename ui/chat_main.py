@@ -2,9 +2,24 @@
 Main Chat Interface - Default page for RAG Chatbot.
 """
 
+import logging
+
 import streamlit as st
 
 from backend.session_manager import SessionManager
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+# Import PromptBuilder for prompt construction
+try:
+    from backend.prompts.prompt_builder import PromptBuilder
+
+    PROMPT_BUILDER_AVAILABLE = True
+except ImportError:
+    PROMPT_BUILDER_AVAILABLE = False
 
 
 class ChatMainUI:
@@ -18,6 +33,9 @@ class ChatMainUI:
         # Check if system is ready
         if not self._check_system_status():
             return
+
+        # Render mode selector
+        self._render_mode_selector()
 
         # Display chat messages
         self._display_chat_history()
@@ -47,6 +65,80 @@ class ChatMainUI:
         # System ready
         return True
 
+    def _render_mode_selector(self) -> None:
+        """Render chat mode selector."""
+        # Check if RAG is available
+        qdrant_manager = self.session_manager.get("qdrant_manager")
+        embedding_strategy = self.session_manager.get("embedding_strategy")
+        has_documents = self.session_manager.has_documents()
+
+        can_use_rag = (
+            qdrant_manager is not None
+            and embedding_strategy is not None
+            and has_documents
+        )
+
+        # Create mode options
+        if can_use_rag:
+            mode_options = {
+                "🤖 RAG Mode (with Documents)": "rag",
+                "💬 Chat Mode (LLM Only)": "llm_only",
+            }
+            default_mode = "rag"
+        else:
+            # Only LLM mode available
+            mode_options = {"💬 Chat Mode (LLM Only)": "llm_only"}
+            default_mode = "llm_only"
+
+        # Get current mode from session
+        current_mode = self.session_manager.get("chat_mode", default_mode)
+
+        # Find current index
+        mode_values = list(mode_options.values())
+        try:
+            current_index = mode_values.index(current_mode)
+        except ValueError:
+            current_index = 0
+
+        # Render selector
+        col1, col2 = st.columns([3, 1])
+
+        with col1:
+            selected_mode_label = st.selectbox(
+                "🎯 Chat Mode",
+                options=list(mode_options.keys()),
+                index=current_index,
+                help=(
+                    "**RAG Mode**: Uses retrieved documents to answer questions\n\n"
+                    "**Chat Mode**: Direct conversation with LLM without document retrieval"
+                ),
+                key="mode_selector",
+            )
+
+            # Update session state if changed
+            selected_mode = mode_options[selected_mode_label]
+            if selected_mode != current_mode:
+                self.session_manager.set("chat_mode", selected_mode)
+                st.rerun()
+
+        with col2:
+            # Show status indicator
+            if selected_mode == "rag":
+                st.metric("📚 Status", "RAG Active", help="Using document retrieval")
+            else:
+                st.metric("💭 Status", "Chat Only", help="LLM without retrieval")
+
+        # Show info message about current mode
+        if selected_mode == "rag":
+            st.info(
+                "📖 **RAG Mode Active** - I'll search your documents to provide accurate answers."
+            )
+        else:
+            st.info(
+                "💬 **Chat Mode Active** - I'll answer using my general knowledge "
+                "without searching documents."
+            )
+
     def _display_chat_history(self) -> None:
         """Display chat message history."""
         chat_history = self.session_manager.get("chat_history", [])
@@ -55,13 +147,7 @@ class ChatMainUI:
             # Show welcome message with status
             has_docs = self.session_manager.has_documents()
 
-            if has_docs:
-                st.success(
-                    "✅ **System Ready with RAG Mode**\n\n"
-                    "I have access to your uploaded documents. "
-                    "Ask me anything!"
-                )
-            else:
+            if not has_docs:
                 st.info(
                     "💬 **System Ready - LLM Mode**\n\n"
                     "I'm ready to chat! However, I don't have access to any documents yet.\n\n"
@@ -100,24 +186,22 @@ class ChatMainUI:
         self.session_manager.set("chat_history", chat_history)
 
     def _generate_response(self, query: str) -> str:
-        """Generate response with or without RAG."""
+        """Generate response based on selected mode."""
         try:
             llm_model = self.session_manager.get("llm_model")
             qdrant_manager = self.session_manager.get("qdrant_manager")
             embedding_strategy = self.session_manager.get("embedding_strategy")
 
-            # Check if we can do RAG
-            can_rag = (
-                qdrant_manager is not None
-                and embedding_strategy is not None
-                and self.session_manager.has_documents()
-            )
+            # Get selected mode from session
+            selected_mode = self.session_manager.get("chat_mode", "rag")
 
-            if can_rag:
+            # Check if RAG mode is selected
+            if selected_mode == "rag":
                 return self._generate_rag_response(
                     query, llm_model, qdrant_manager, embedding_strategy
                 )
             else:
+                # LLM-only mode
                 return self._generate_llm_only_response(query, llm_model)
 
         except Exception as e:
@@ -163,11 +247,43 @@ class ChatMainUI:
                     st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
                     st.markdown("---")
 
-            # Step 5: Build context
-            context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
+            # Step 5: Build context using PromptBuilder
+            if PROMPT_BUILDER_AVAILABLE:
+                # Format context with scores
+                chunks_only = [chunk for chunk, _ in retrieved_chunks]
+                scores_only = [score for _, score in retrieved_chunks]
+                context = PromptBuilder.format_context(
+                    chunks_only, scores_only, include_scores=False
+                )
+            else:
+                # Legacy format
+                context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
 
-            # Step 6: Generate response with context
-            response = llm_model.generate_content(prompt=query, context=context)
+            # Step 6: Build RAG prompt using active template
+            # Get active RAG template from SessionManager
+            rag_template = self.session_manager.get_active_rag_template()
+
+            if PROMPT_BUILDER_AVAILABLE and rag_template:
+                # Use PromptBuilder with active template
+                try:
+                    # Get chat history for templates that support it (e.g., rag_qa_with_history)
+                    chat_history = self.session_manager.get("chat_history", [])
+
+                    full_prompt = PromptBuilder.build_rag_prompt(
+                        query=query,
+                        context=context,
+                        template=rag_template,
+                        chat_history=chat_history,  # Pass history for templates that need it
+                    )
+                    # Generate response with the built prompt
+                    response = llm_model.generate_content(prompt=full_prompt)
+                except Exception as e:
+                    logger.error(f"Error building RAG prompt: {e}")
+                    # Fallback to direct context passing
+                    response = ""
+            else:
+                # Direct context passing (LLM will build prompt internally)
+                response = llm_model.generate_content(prompt=query, context=context)
 
             # Add attribution
             response += (
@@ -186,10 +302,28 @@ class ChatMainUI:
             # Get chat history for context
             chat_history = self.session_manager.get("chat_history", [])
 
-            # Generate response
-            response = llm_model.generate_content(
-                prompt=query, chat_history=chat_history
-            )
+            # Get active chat template from SessionManager
+            chat_template = self.session_manager.get_active_chat_template()
+
+            if PROMPT_BUILDER_AVAILABLE and chat_template:
+                # Use PromptBuilder with active chat template
+                try:
+                    full_prompt = PromptBuilder.build_chat_prompt(
+                        query=query, chat_history=chat_history, template=chat_template
+                    )
+                    # Generate response with the built prompt
+                    response = llm_model.generate_content(prompt=full_prompt)
+                except Exception as e:
+                    logger.error(f"Error building chat prompt: {e}")
+                    # Fallback to direct chat history passing
+                    response = llm_model.generate_content(
+                        prompt=query, chat_history=chat_history
+                    )
+            else:
+                # Direct chat history passing (LLM will handle internally)
+                response = llm_model.generate_content(
+                    prompt=query, chat_history=chat_history
+                )
 
             return response
 

@@ -122,9 +122,15 @@ class LLMSetupUI:
         api_key = self.session_manager.get("llm_api_key")
         model_version = self.session_manager.get("model_version", "gpt-4o-mini")
 
+        # Get system prompt from active template
+        system_prompt = self.session_manager.get_active_system_prompt()
+
         try:
             llm_model = self.llm_factory.create_online_llm(
-                provider_name=provider, api_key=api_key, model_version=model_version
+                provider_name=provider,
+                api_key=api_key,
+                model_version=model_version,
+                system_prompt=system_prompt,
             )
             self.session_manager.set("online_llms", llm_model)
         except Exception as e:

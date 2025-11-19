@@ -144,3 +144,8 @@ qdrant_storage/
 
 # Testing_datas
 testing_datas/*
+
+# Claude
+.claude/
+CLAUDE.MD
+.mcp.json

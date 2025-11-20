@@ -18,6 +18,7 @@ from config.constants import (
     OPENAI_EMBEDDING_PROVIDER,
     OPENAI_LLM_MODELS,
     PAGE_CHAT,
+    PAGE_DATA_MANAGEMENT,
     PAGE_UPLOAD,
 )
 
@@ -51,26 +52,30 @@ class SidebarNavigation:
 
         current_page = self.session_manager.get("current_page", PAGE_CHAT)
 
-        # Page buttons
-        col1, col2 = st.sidebar.columns(2)
+        # Page buttons - Chat, Upload, Data Management
+        if st.sidebar.button(
+            "💬 Chat",
+            use_container_width=True,
+            type="primary" if current_page == PAGE_CHAT else "secondary",
+        ):
+            self.session_manager.set("current_page", PAGE_CHAT)
+            st.rerun()
 
-        with col1:
-            if st.button(
-                "💬 Chat",
-                use_container_width=True,
-                type="primary" if current_page == PAGE_CHAT else "secondary",
-            ):
-                self.session_manager.set("current_page", PAGE_CHAT)
-                st.rerun()
+        if st.sidebar.button(
+            "📁 Upload",
+            use_container_width=True,
+            type="primary" if current_page == PAGE_UPLOAD else "secondary",
+        ):
+            self.session_manager.set("current_page", PAGE_UPLOAD)
+            st.rerun()
 
-        with col2:
-            if st.button(
-                "📁 Upload",
-                use_container_width=True,
-                type="primary" if current_page == PAGE_UPLOAD else "secondary",
-            ):
-                self.session_manager.set("current_page", PAGE_UPLOAD)
-                st.rerun()
+        if st.sidebar.button(
+            "🗂️ Data Management",
+            use_container_width=True,
+            type="primary" if current_page == PAGE_DATA_MANAGEMENT else "secondary",
+        ):
+            self.session_manager.set("current_page", PAGE_DATA_MANAGEMENT)
+            st.rerun()
 
     def _render_settings(self) -> None:
         """Render settings section."""

@@ -56,18 +56,15 @@ class DataUploadUI:
 
         language_choice = st.radio(
             "Document Language:",
-            [NONE, ENGLISH, VIETNAMESE],
+            [ENGLISH, VIETNAMESE],
             index=0,
             horizontal=True,
             help="Select the primary language of your documents",
         )
 
-        if language_choice != NONE:
-            lang_code = EN if language_choice == ENGLISH else VI
-            self.session_manager.set("language", lang_code)
-            st.success(f"✅ Language: **{language_choice}** (`{lang_code}`)")
-        else:
-            self.session_manager.set("language", None)
+        lang_code = EN if language_choice == ENGLISH else VI
+        self.session_manager.set("language", lang_code)
+        st.success(f"✅ Language: **{language_choice}** (`{lang_code}`)")
 
     def _check_prerequisites(self) -> bool:
         """Check if prerequisites are met."""
@@ -75,11 +72,6 @@ class DataUploadUI:
             st.warning(
                 "⚠️ Embeddings not configured. " "Please enter API key in sidebar first."
             )
-            return False
-
-        language = self.session_manager.get("language")
-        if not language:
-            st.warning("⚠️ Please select a document language first.")
             return False
 
         return True

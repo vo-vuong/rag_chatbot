@@ -2,9 +2,10 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from backend.session_manager import SessionManager
-from config.constants import PAGE_CHAT, PAGE_UPLOAD
+from config.constants import PAGE_CHAT, PAGE_UPLOAD, PAGE_DATA_MANAGEMENT
 from ui.chat_main import ChatMainUI
 from ui.data_upload import DataUploadUI
+from ui.data_management import DataManagementUI
 from ui.sidebar_navigation import SidebarNavigation
 
 load_dotenv()
@@ -27,6 +28,7 @@ class RAGChatbotApp:
         self.sidebar_nav = SidebarNavigation(self.session_manager)
         self.chat_ui = ChatMainUI(self.session_manager)
         self.upload_ui = DataUploadUI(self.session_manager)
+        self.data_management_ui = DataManagementUI(self.session_manager)
 
     def run(self):
         """Run the application."""
@@ -47,6 +49,8 @@ class RAGChatbotApp:
         # Render appropriate page
         if current_page == PAGE_UPLOAD:
             self._render_upload_page()
+        elif current_page == PAGE_DATA_MANAGEMENT:
+            self._render_data_management_page()
         else:
             self._render_chat_page()
 
@@ -96,6 +100,19 @@ class RAGChatbotApp:
         if self.session_manager.get("data_saved_success"):
             st.markdown("---")
             self._render_upload_success()
+
+    def _render_data_management_page(self) -> None:
+        """Render data management page."""
+        # Header
+        st.title("🗂️ Data Management")
+        st.caption("Manage your documents, collections, and data operations.")
+        st.markdown("---")
+
+        # Render data management interface
+        try:
+            self.data_management_ui.render(header_number=1)
+        except Exception as e:
+            st.error(f"Error in data management interface: {str(e)}")
 
     def _render_upload_success(self) -> None:
         """Render upload success status."""

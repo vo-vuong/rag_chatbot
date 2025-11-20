@@ -115,6 +115,7 @@ MSG_EXPORT_SUCCESS = "Chatbot exported successfully!"
 # ============================================================
 PAGE_CHAT = "chat"
 PAGE_UPLOAD = "upload"
+PAGE_DATA_MANAGEMENT = "data_management"
 
 # ============================================================
 # API KEYS

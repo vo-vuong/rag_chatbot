@@ -95,7 +95,7 @@ The application will open in your web browser at `http://localhost:8501`.
 ### Basic Workflow
 
 1. **Configure LLM**: Set up your OpenAI API key in the sidebar
-2. **Select Language**: Choose document language (English or Vietnamese)
+2. **Select Language**: Choose document language (English by default, or Vietnamese)
 3. **Upload Documents**: Navigate to the Upload page to add CSV files
 4. **Process Documents**: Select chunking strategy and process your files
 5. **Save to Vector DB**: Store processed chunks in Qdrant for retrieval

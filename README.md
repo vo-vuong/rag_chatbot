@@ -7,11 +7,14 @@ A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit 
 - 🤖 **LLM Support**: OpenAI models (with planned support for Gemini and local Ollama models)
 - 📄 **Document Processing**: Support for CSV files (with future support for additional formats)
 - 🔍 **Document Chunking**: Basic chunking options including no chunking and simple sentence-based splitting
-- 💾 **Vector Database**: Qdrant integration for efficient document retrieval
+- 💾 **Vector Database**: Qdrant integration for efficient document retrieval with comprehensive collection management
 - 🌐 **Multi-language**: Support for English and Vietnamese
 - 🎯 **Vector Search**: Qdrant-based similarity search for document retrieval
 - 📝 **Prompt Management**: Template system for customizable prompts
 - 🔄 **Real-time Chat**: Context-aware conversations with history
+- 🗂️ **Collection Management**: Create, view, and delete vector collections through dedicated UI
+- 📊 **Data Exploration**: Browse collection data points with pagination, search, and filtering
+- 🔎 **Advanced Search**: Content-based filtering across stored documents with pagination
 
 ## Architecture
 
@@ -100,6 +103,8 @@ The application will open in your web browser at `http://localhost:8501`.
 4. **Process Documents**: Select chunking strategy and process your files
 5. **Save to Vector DB**: Store processed chunks in Qdrant for retrieval
 6. **Chat**: Ask questions about your uploaded documents on the main chat page
+7. **Manage Collections**: Use the Data Management page to create, view, and manage vector collections
+8. **Explore Data**: Browse and search through stored document data with advanced filtering
 
 ### Supported Document Types
 
@@ -190,10 +195,11 @@ rag_chatbot/
 │   ├── llms/                      # LLM integrations
 │   ├── prompts/                   # Prompt template system
 │   └── vector_db/                 # Qdrant integration
+│       └── qdrant_manager.py      # Qdrant client and collection management
 ├── ui/                            # Streamlit UI components
 │   ├── chat_main.py              # Chat interface
 │   ├── data_upload.py            # Document upload UI
-│   ├── llm_setup.py              # LLM configuration UI
+│   ├── data_management.py        # Modular collection management and data exploration UI
 │   └── sidebar_navigation.py     # Navigation sidebar
 ├── config/                        # Configuration constants
 ├── plans/                        # Workflow planning documents

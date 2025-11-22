@@ -14,6 +14,7 @@ import streamlit as st
 
 from backend.session_manager import SessionManager
 from backend.vector_db.qdrant_manager import QdrantManager
+from backend.document_processor import create_document_processor
 from config.constants import EN, ENGLISH, NONE, VI, VIETNAMESE
 
 
@@ -79,47 +80,84 @@ class DataUploadUI:
     def _render_upload_section(self) -> None:
         """Render file upload section."""
         uploaded_files = st.file_uploader(
-            "Upload CSV files",
-            type=["csv"],
+            "Upload CSV and PDF files",
+            type=["csv", "pdf"],
             accept_multiple_files=True,
-            help="Upload one or more CSV files",
+            help="Upload one or more CSV and PDF files for document processing",
         )
 
         if uploaded_files:
             self._process_uploaded_files(uploaded_files)
 
     def _process_uploaded_files(self, uploaded_files: List) -> None:
-        """Process uploaded files."""
+        """Process uploaded files using the document processor."""
         try:
+            # Initialize document processor
+            processor = create_document_processor()
+
+            # Prepare file data for processing
+            files_data = []
+            for uploaded_file in uploaded_files:
+                files_data.append((uploaded_file.read(), uploaded_file.name))
+                st.success(f"✅ Loaded: {uploaded_file.name}")
+
+            # Get processing parameters
+            language = self.session_manager.get("language", "English")
+
+            # Process all files
             all_data = []
 
-            for uploaded_file in uploaded_files:
-                file_extension = uploaded_file.name.split('.')[-1].lower()
-
-                if file_extension == 'csv':
-                    df = pd.read_csv(uploaded_file)
+            for file_content, file_name in files_data:
+                try:
+                    df = processor.process_file(
+                        file_content,
+                        file_name,
+                        language=language,
+                        chunking_strategy="semantic",  # Default to semantic chunking for PDFs
+                    )
                     all_data.append(df)
-                    st.success(f"✅ Loaded: {uploaded_file.name}")
-                else:
-                    st.warning(f"⚠️ Skipping unsupported file: {uploaded_file.name}")
+                except Exception as e:
+                    st.error(f"Error processing {file_name}: {str(e)}")
+                    continue
 
+            # Combine all processed data
             if all_data:
                 combined_df = pd.concat(all_data, ignore_index=True)
+            else:
+                st.error("No files were processed successfully")
+                return
 
+            # Store document IDs
+            if "doc_id" in combined_df.columns:
+                doc_ids = combined_df["doc_id"].tolist()
+            else:
+                # Generate doc_ids if not present (for backward compatibility)
                 doc_ids = [str(uuid.uuid4()) for _ in range(len(combined_df))]
-                combined_df['doc_id'] = doc_ids
+                combined_df["doc_id"] = doc_ids
 
-                self.session_manager.set("doc_ids", doc_ids)
+            self.session_manager.set("doc_ids", doc_ids)
 
-                st.success(
-                    f"📊 Loaded {len(combined_df)} rows from {len(all_data)} file(s)"
+            # Display processing results
+            st.success(
+                f"📊 Processed {len(combined_df)} chunks from {len(uploaded_files)} file(s)"
+            )
+
+            # Display preview based on file type
+            if "content" in combined_df.columns:
+                # PDF processing result format
+                preview_data = combined_df[["content", "metadata"]].head(10)
+                preview_data["preview"] = preview_data["content"].str[:100] + "..."
+                st.dataframe(
+                    preview_data[["preview", "metadata"]], use_container_width=True
                 )
+            else:
+                # CSV processing result format
                 st.dataframe(combined_df.head(10), use_container_width=True)
 
-                if len(combined_df) > 10:
-                    st.caption(f"Showing first 10 rows. Total: {len(combined_df)}")
+            if len(combined_df) > 10:
+                st.caption(f"Showing first 10 rows. Total: {len(combined_df)}")
 
-                self._render_chunking_section(combined_df)
+            self._render_chunking_section(combined_df)
 
         except Exception as e:
             st.error(f"❌ Error: {str(e)}")
@@ -133,28 +171,88 @@ class DataUploadUI:
             st.warning("DataFrame is empty")
             return
 
-        index_column = st.selectbox(
-            "Choose column to index:",
-            df.columns.tolist(),
-            help="Select the text column for vector search",
-        )
+        # Check if this is PDF processed data (has 'content' column)
+        is_pdf_processed = "content" in df.columns
 
-        st.info(f"Selected: **{index_column}**")
+        if is_pdf_processed:
+            # PDF data already chunked by document processor
+            st.info(
+                "📄 PDF files have been processed with intelligent chunking strategy."
+            )
 
-        chunk_option = st.radio(
-            "Chunking strategy:",
-            ["No Chunking", "Simple Split (by sentences)"],
-            help="How to split documents",
-            key="chunkOption",
-        )
+            # Show processing summary
+            if not df.empty:
+                total_chunks = len(df)
+                avg_chunk_length = (
+                    df["content"].str.len().mean() if "content" in df.columns else 0
+                )
 
-        if st.button("🔄 Process Chunks", type="primary"):
-            chunks_df = self._process_chunks(df, index_column, chunk_option)
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.metric("Total Chunks", total_chunks)
+                with col2:
+                    st.metric("Avg Chunk Length", f"{avg_chunk_length:.0f} chars")
+                with col3:
+                    if "metadata" in df.columns:
+                        file_types = df["metadata"].apply(
+                            lambda x: (
+                                x.get("file_type", "unknown")
+                                if isinstance(x, dict)
+                                else "unknown"
+                            )
+                        )
+                        unique_types = file_types.unique()
+                        st.metric("File Types", len(unique_types))
 
-            if chunks_df is not None and not chunks_df.empty:
-                st.success(f"✅ Created {len(chunks_df)} chunks!")
-                st.dataframe(chunks_df.head(10), use_container_width=True)
-                self.session_manager.set("chunks_df", chunks_df)
+            # Display processed chunks
+            if not df.empty:
+                st.subheader("📋 Processed Chunks Preview")
+
+                # Show chunks with metadata
+                display_df = df.copy()
+                if "content" in display_df.columns:
+                    display_df["preview"] = display_df["content"].str[:200] + "..."
+
+                # Select columns to display
+                display_cols = (
+                    ["preview", "metadata"]
+                    if "preview" in display_df.columns
+                    else df.columns.tolist()
+                )
+                st.dataframe(
+                    display_df[display_cols].head(10), use_container_width=True
+                )
+
+                # Set chunks_df directly for PDF processed data
+                self.session_manager.set("chunks_df", df)
+                st.success(
+                    f"✅ Ready to save {len(df)} processed chunks to vector database!"
+                )
+
+        else:
+            # CSV data - traditional chunking interface
+            index_column = st.selectbox(
+                "Choose column to index:",
+                df.columns.tolist(),
+                help="Select the text column for vector search",
+            )
+
+            st.info(f"Selected: **{index_column}**")
+
+            chunk_option = st.radio(
+                "Chunking strategy:",
+                ["No Chunking", "Simple Split (by sentences)"],
+                help="How to split documents",
+                key="chunkOption",
+            )
+
+            if st.button("🔄 Process Chunks", type="primary"):
+                chunks_df = self._process_chunks(df, index_column, chunk_option)
+
+                if chunks_df is not None and not chunks_df.empty:
+                    st.success(f"✅ Created {len(chunks_df)} chunks!")
+                    st.dataframe(chunks_df.head(10), use_container_width=True)
+                    self.session_manager.set("chunks_df", chunks_df)
 
     def _process_chunks(
         self, df: pd.DataFrame, index_column: str, chunk_option: str
@@ -174,12 +272,12 @@ class DataUploadUI:
                 if chunk_option == "No Chunking":
                     chunks = [selected_value]
                 else:
-                    sentences = re.split(r'[.!?]+', selected_value)
+                    sentences = re.split(r"[.!?]+", selected_value)
                     chunks = [s.strip() for s in sentences if s.strip()]
 
                 for chunk in chunks:
                     chunk_record = {
-                        'chunk': chunk,
+                        "chunk": chunk,
                         **{k: v for k, v in row.to_dict().items() if k != index_column},
                     }
                     chunk_records.append(chunk_record)
@@ -240,7 +338,15 @@ class DataUploadUI:
 
                 # Step 3: Embeddings
                 st.info("🔄 Step 3/4: Generating embeddings...")
-                chunks = chunks_df['chunk'].tolist()
+
+                # Handle both CSV ('chunk' column) and PDF ('content' column) data formats
+                if "chunk" in chunks_df.columns:
+                    chunks = chunks_df["chunk"].tolist()
+                elif "content" in chunks_df.columns:
+                    chunks = chunks_df["content"].tolist()
+                else:
+                    st.error("❌ No text content found for embedding generation")
+                    return
 
                 try:
                     embeddings = embedding_strategy.embed_texts(chunks)

@@ -5,8 +5,9 @@ A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit 
 ## Features
 
 - 🤖 **LLM Support**: OpenAI models (with planned support for Gemini and local Ollama models)
-- 📄 **Document Processing**: Support for CSV files (with future support for additional formats)
-- 🔍 **Document Chunking**: Basic chunking options including no chunking and simple sentence-based splitting
+- 📄 **Advanced Document Processing**: Support for CSV and PDF files with OCR capabilities
+- 🔍 **Intelligent Chunking**: Semantic chunking strategies with title-based segmentation
+- 🔬 **OCR Integration**: Tesseract OCR for extracting text from images in PDFs
 - 💾 **Vector Database**: Qdrant integration for efficient document retrieval with comprehensive collection management
 - 🌐 **Multi-language**: Support for English and Vietnamese
 - 🎯 **Vector Search**: Qdrant-based similarity search for document retrieval
@@ -15,6 +16,7 @@ A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit 
 - 🗂️ **Collection Management**: Create, view, and delete vector collections through dedicated UI
 - 📊 **Data Exploration**: Browse collection data points with pagination, search, and filtering
 - 🔎 **Advanced Search**: Content-based filtering across stored documents with pagination
+- 🛠️ **Cross-Platform**: Works on Windows, macOS, and Linux with automatic dependency detection
 
 ## Architecture
 
@@ -31,6 +33,14 @@ The application follows a modular architecture with clear separation of concerns
 - Conda (for environment management)
 - Docker and Docker Compose (for Qdrant vector database)
 - Git
+
+### OCR System Requirements (Optional, for PDF image processing)
+
+- **Tesseract OCR**: Automatic installation via conda, or manual installation
+- **Poppler**: PDF rendering library (automatically installed with conda)
+- **4GB+ RAM**: Recommended for processing large PDFs with images
+
+> **Note**: The system automatically detects and configures OCR components. If Tesseract or Poppler are not available, PDF processing will gracefully fallback to text-only extraction.
 
 ## Installation
 
@@ -54,11 +64,14 @@ conda activate rag-chatbot
 ### 3. Install Dependencies
 
 ```bash
-# Install Python dependencies
+# Install Python dependencies (includes OCR components)
 pip install -r requirements.txt
 
+# Optional: Install OCR system dependencies via conda (recommended)
+conda install -c conda-forge tesseract poppler -y
+
 # Verify installation
-pip list | grep -E "(streamlit|qdrant|langchain|openai)"
+pip list | grep -E "(streamlit|qdrant|langchain|openai|unstructured|tesseract)"
 ```
 
 ### 4. Set Up Environment Variables
@@ -99,8 +112,10 @@ The application will open in your web browser at `http://localhost:8501`.
 
 1. **Configure LLM**: Set up your OpenAI API key in the sidebar
 2. **Select Language**: Choose document language (English by default, or Vietnamese)
-3. **Upload Documents**: Navigate to the Upload page to add CSV files
+3. **Upload Documents**: Navigate to the Upload page to add CSV and PDF files
 4. **Process Documents**: Select chunking strategy and process your files
+   - **PDF files**: Automatic OCR processing for images, semantic chunking
+   - **CSV files**: Text-based processing with simple chunking
 5. **Save to Vector DB**: Store processed chunks in Qdrant for retrieval
 6. **Chat**: Ask questions about your uploaded documents on the main chat page
 7. **Manage Collections**: Use the Data Management page to create, view, and manage vector collections
@@ -108,14 +123,30 @@ The application will open in your web browser at `http://localhost:8501`.
 
 ### Supported Document Types
 
-- CSV files (.csv)
+- **CSV files (.csv)**: Structured data with automatic text extraction
+- **PDF files (.pdf)**: Advanced processing with OCR capabilities
+  - Text-based PDFs: Direct text extraction
+  - Image-based PDFs: OCR text recognition using Tesseract
+  - Mixed PDFs: Combined text and image processing
 
-### Document Chunking Options
+### Document Chunking Strategies
 
 - **No Chunking**: Keep text as-is without splitting
 - **Simple Split**: Split text by sentences using punctuation marks (., !, ?)
+- **Semantic Chunking**: Content-aware segmentation using title-based structure (PDFs)
+  - Preserves document hierarchy and structure
+  - Intelligent section detection
+  - Context-aware chunk boundaries
 
-_Note: Advanced chunking strategies (Recursive, Semantic, Agentic) are planned for future updates._
+### OCR Capabilities
+
+- **Automatic Detection**: System automatically detects and configures OCR components
+- **Cross-Platform Support**: Works on Windows, macOS, and Linux
+- **Multi-Language**: Support for 125+ languages including English and Vietnamese
+- **Graceful Fallback**: Continues processing even if OCR components are missing
+- **Performance Optimized**: Efficient processing of large PDF files
+
+For detailed OCR setup instructions, see [setup_read_image_from_pdf.md](setup_read_image_from_pdf.md).
 
 ## Configuration
 
@@ -191,6 +222,7 @@ rag_chatbot/
 ├── backend/                        # Core business logic
 │   ├── session_manager.py         # Singleton state management
 │   ├── collection_management.py   # Vector collection management
+│   ├── document_processor.py      # Advanced document processing with OCR
 │   ├── embeddings/                # Embedding strategies
 │   ├── llms/                      # LLM integrations
 │   ├── prompts/                   # Prompt template system
@@ -198,15 +230,16 @@ rag_chatbot/
 │       └── qdrant_manager.py      # Qdrant client and collection management
 ├── ui/                            # Streamlit UI components
 │   ├── chat_main.py              # Chat interface
-│   ├── data_upload.py            # Document upload UI
+│   ├── data_upload.py            # Document upload UI (CSV + PDF support)
 │   ├── data_management.py        # Modular collection management and data exploration UI
 │   └── sidebar_navigation.py     # Navigation sidebar
 ├── config/                        # Configuration constants
 ├── plans/                        # Workflow planning documents
 ├── qdrant_storage/               # Local vector database storage
-├── requirements.txt              # Python dependencies
+├── requirements.txt              # Python dependencies (includes OCR components)
 ├── docker-compose.yml           # Qdrant container configuration
 ├── .env.example                  # Environment variables template
+├── setup_read_image_from_pdf.md  # Comprehensive OCR setup guide
 └── README.md                     # This file
 ```
 
@@ -226,20 +259,45 @@ rag_chatbot/
    - Verify you have sufficient API credits
    - Check network connectivity
 
-3. **CSV File Upload Issues**
+3. **PDF Processing Issues**
+
+   - **Tesseract OCR Errors**: See [setup_read_image_from_pdf.md](setup_read_image_from_pdf.md) for detailed troubleshooting
+   - **"Unable to get page count"**: Install Poppler: `conda install -c conda-forge poppler`
+   - **"eng.traineddata not found"**: Install Tesseract with language data: `conda install -c conda-forge tesseract`
+   - **Processing timeouts**: Reduce file size or ensure sufficient RAM (4GB+ recommended)
+   - **OCR warnings**: Normal fallback behavior - processing continues with text extraction
+
+4. **CSV File Upload Issues**
 
    - Ensure CSV files are properly formatted
    - Check for encoding issues (UTF-8 recommended)
    - Verify file size is reasonable (under 100MB recommended)
 
-4. **Memory Issues**
+5. **Memory Issues**
 
    - Restart Qdrant container: `docker-compose restart qdrant`
    - Clear Streamlit cache: `streamlit cache clear`
+   - Reduce PDF file size or process in smaller batches
 
-5. **Conda Environment Issues**
+6. **Conda Environment Issues**
    - Ensure you're using the correct conda environment: `conda activate rag-chatbot`
    - Verify Python version: `python --version`
+
+### OCR-Specific Troubleshooting
+
+For detailed OCR setup and troubleshooting, including platform-specific installations and configuration, refer to the comprehensive [PDF Processing Setup Guide](setup_read_image_from_pdf.md).
+
+#### Quick OCR Verification
+
+```bash
+# Check Tesseract installation
+tesseract --version
+tesseract --list-langs
+
+# Verify Python integration
+conda activate rag-chatbot
+python -c "import pytesseract; print('✅ OCR ready')"
+```
 
 ### Logs and Debugging
 

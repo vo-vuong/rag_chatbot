@@ -99,7 +99,7 @@ HYDE_SEARCH = "Hyde Search"
 # ============================================================
 # FILE TYPES
 # ============================================================
-SUPPORTED_FILE_TYPES = ["csv", "json", "pdf", "docx", "doc", "xlsx"]
+SUPPORTED_FILE_TYPES = ["csv", "pdf", "docx"]
 
 # ============================================================
 # UI MESSAGES

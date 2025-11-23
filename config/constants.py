@@ -99,7 +99,21 @@ HYDE_SEARCH = "Hyde Search"
 # ============================================================
 # FILE TYPES
 # ============================================================
-SUPPORTED_FILE_TYPES = ["csv", "json", "pdf", "docx", "doc", "xlsx"]
+SUPPORTED_FILE_TYPES = ["csv", "pdf"]
+
+# ============================================================
+# PDF PROCESSING
+# ============================================================
+PDF_PROCESSING_STRATEGIES = {
+    "auto": "Auto (Recommended)",
+    "ocr_only": "OCR Processing",
+    "fast": "Fast Processing",
+    "hi_res": "High Resolution (Recommended for Images)",
+    "fallback": "Basic Fallback",
+}
+
+PDF_SIZE_WARNING_MB = 10  # Warning threshold for PDF file sizes
+PDF_SIZE_LIMIT_MB = 50  # Hard limit for PDF file sizes
 
 # ============================================================
 # UI MESSAGES

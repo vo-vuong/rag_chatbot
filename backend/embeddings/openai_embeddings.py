@@ -112,9 +112,40 @@ class OpenAIEmbeddingStrategy(EmbeddingStrategy):
         try:
             logger.info(f"Embedding {len(texts)} texts with model: {self.model}")
 
+            # Validate and clean input texts
+            cleaned_texts = []
+            for i, text in enumerate(texts):
+                if not isinstance(text, str):
+                    logger.warning(
+                        f"Text at index {i} is not a string, converting: {type(text)}"
+                    )
+                    text = str(text)
+
+                # Ensure text is not empty after stripping
+                if not text.strip():
+                    logger.warning(
+                        f"Text at index {i} is empty after stripping, using placeholder"
+                    )
+                    text = "empty"
+
+                # Truncate if too long (OpenAI has input length limits)
+                if len(text) > 8000:  # Conservative limit
+                    logger.warning(
+                        f"Text at index {i} is very long ({len(text)} chars), truncating"
+                    )
+                    text = text[:8000]
+
+                cleaned_texts.append(text.strip())
+
+            # Log sample of first text for debugging
+            if cleaned_texts:
+                logger.debug(
+                    f"First text sample (length {len(cleaned_texts[0])}): {cleaned_texts[0][:200]}..."
+                )
+
             # Call OpenAI API
             response = self.client.embeddings.create(
-                input=texts,
+                input=cleaned_texts,
                 model=self.model,
             )
 
@@ -130,6 +161,12 @@ class OpenAIEmbeddingStrategy(EmbeddingStrategy):
 
         except OpenAIError as e:
             logger.error(f"OpenAI API error: {str(e)}")
+            # Log the actual input data for debugging (excluding the actual content for privacy)
+            if texts:
+                logger.error(
+                    f"Input validation: {len(texts)} items, types: {[type(t).__name__ for t in texts[:5]]}"
+                )
+                logger.error(f"Sample text lengths: {[len(str(t)) for t in texts[:5]]}")
             raise
         except Exception as e:
             logger.error(f"Unexpected error during embedding: {str(e)}")

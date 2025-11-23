@@ -2,10 +2,10 @@ import streamlit as st
 from dotenv import load_dotenv
 
 from backend.session_manager import SessionManager
-from config.constants import PAGE_CHAT, PAGE_UPLOAD, PAGE_DATA_MANAGEMENT
+from config.constants import PAGE_CHAT, PAGE_DATA_MANAGEMENT, PAGE_UPLOAD
 from ui.chat_main import ChatMainUI
-from ui.data_upload import DataUploadUI
 from ui.data_management import DataManagementUI
+from ui.data_upload import DataUploadUI
 from ui.sidebar_navigation import SidebarNavigation
 
 load_dotenv()

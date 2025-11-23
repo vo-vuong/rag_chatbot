@@ -1,20 +1,23 @@
 # RAG Chatbot
 
-A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit that allows users to upload documents, process them using various chunking strategies, and ask questions answered using AI-powered retrieval from document chunks.
+A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit that allows users to upload documents, process them using advanced chunking strategies with OCR capabilities, and ask questions answered using AI-powered retrieval from document chunks.
 
 ## Features
 
 - 🤖 **LLM Support**: OpenAI models (with planned support for Gemini and local Ollama models)
-- 📄 **Document Processing**: Support for CSV files (with future support for additional formats)
-- 🔍 **Document Chunking**: Basic chunking options including no chunking and simple sentence-based splitting
+- 📄 **Advanced Document Processing**: Support for CSV and PDF files with intelligent processing strategies
+- 🔍 **Intelligent Chunking**: Advanced chunking strategies including semantic chunking for PDFs and title-based segmentation
 - 💾 **Vector Database**: Qdrant integration for efficient document retrieval with comprehensive collection management
-- 🌐 **Multi-language**: Support for English and Vietnamese
-- 🎯 **Vector Search**: Qdrant-based similarity search for document retrieval
-- 📝 **Prompt Management**: Template system for customizable prompts
-- 🔄 **Real-time Chat**: Context-aware conversations with history
+- 🔤 **OCR Integration**: Tesseract OCR with 125+ language support and cross-platform compatibility
+- 🌐 **Multi-language**: Support for English and Vietnamese with intelligent language detection
+- 🎯 **Vector Search**: Qdrant-based similarity search for document retrieval with multiple search strategies
+- 📝 **Prompt Management**: Template system for customizable system, RAG, and chat prompts
+- 🔄 **Real-time Chat**: Context-aware conversations with history and RAG or LLM-only modes
 - 🗂️ **Collection Management**: Create, view, and delete vector collections through dedicated UI
 - 📊 **Data Exploration**: Browse collection data points with pagination, search, and filtering
 - 🔎 **Advanced Search**: Content-based filtering across stored documents with pagination
+- 🖼️ **Image Extraction**: Automatic image extraction from PDFs with permanent storage
+- ⚙️ **Multi-tier Processing**: Automatic strategy detection with fallback mechanisms for robust document processing
 
 ## Architecture
 
@@ -30,7 +33,6 @@ The application follows a modular architecture with clear separation of concerns
 - Python 3.8+
 - Conda (for environment management)
 - Docker and Docker Compose (for Qdrant vector database)
-- Git
 
 ## Installation
 
@@ -56,6 +58,9 @@ conda activate rag-chatbot
 ```bash
 # Install Python dependencies
 pip install -r requirements.txt
+
+# Install OCR system dependencies (recommended for PDF processing)
+conda install -c conda-forge tesseract poppler -y
 
 # Verify installation
 pip list | grep -E "(streamlit|qdrant|langchain|openai)"
@@ -99,23 +104,51 @@ The application will open in your web browser at `http://localhost:8501`.
 
 1. **Configure LLM**: Set up your OpenAI API key in the sidebar
 2. **Select Language**: Choose document language (English by default, or Vietnamese)
-3. **Upload Documents**: Navigate to the Upload page to add CSV files
-4. **Process Documents**: Select chunking strategy and process your files
-5. **Save to Vector DB**: Store processed chunks in Qdrant for retrieval
-6. **Chat**: Ask questions about your uploaded documents on the main chat page
-7. **Manage Collections**: Use the Data Management page to create, view, and manage vector collections
-8. **Explore Data**: Browse and search through stored document data with advanced filtering
+3. **Upload Documents**: Navigate to the Upload page to add PDF and CSV files
+4. **Select Processing Strategy**: Choose appropriate PDF processing strategy (Auto, Fast, High-Resolution, OCR, or Fallback)
+5. **Process Documents**: Select chunking strategy and process your files
+6. **Save to Vector DB**: Store processed chunks in Qdrant for retrieval
+7. **Chat**: Ask questions about your uploaded documents on the main chat page
+8. **Manage Collections**: Use the Data Management page to create, view, and manage vector collections
+9. **Explore Data**: Browse and search through stored document data with advanced filtering
+
+### PDF Processing Best Practices
+
+- **Text-based PDFs**: Use "Fast Processing" for quicker results
+- **Image-based PDFs**: Use "High Resolution" with OCR for best results
+- **Scanned Documents**: Use "OCR Processing" when text is embedded in images
+- **Large Files**: Processing may take longer for files >10MB due to OCR operations
+- **Image Storage**: Extracted images are saved to the `./figures/` directory automatically
 
 ### Supported Document Types
 
-- CSV files (.csv)
+- **PDF files** (.pdf): Advanced processing with OCR and semantic chunking
+- **CSV files** (.csv): Text-based processing with simple chunking strategies
 
-### Document Chunking Options
+### Document Processing Strategies
+
+The system uses a multi-tier processing strategy with automatic detection and fallbacks:
+
+#### PDF Processing Strategies
+
+- **Auto (Recommended)**: Automatically detects optimal processing strategy
+- **Fast Processing**: Quick text extraction for text-based PDFs
+- **High Resolution**: Advanced processing with OCR for image-based PDFs
+- **OCR Processing**: Force OCR processing for scanned documents
+- **Basic Fallback**: Simple text extraction with pdfplumber
+
+#### Chunking Options
 
 - **No Chunking**: Keep text as-is without splitting
 - **Simple Split**: Split text by sentences using punctuation marks (., !, ?)
+- **Semantic Chunking** (PDF only): Intelligent title-based segmentation using `chunk_by_title`
 
-_Note: Advanced chunking strategies (Recursive, Semantic, Agentic) are planned for future updates._
+#### OCR Configuration
+
+- **Multi-language Support**: 125+ languages including English and Vietnamese
+- **Cross-platform**: Windows, macOS, and Linux compatibility
+- **Automatic Detection**: Intelligent text vs image PDF detection
+- **Graceful Fallbacks**: Processing continues even if OCR fails
 
 ## Configuration
 
@@ -144,28 +177,13 @@ QDRANT_COLLECTION_NAME=rag_chatbot_collection
 - **OpenAI**: text-embedding-3-small (currently supported)
 - **Local Models**: Planned support for sentence-transformer models for English and Vietnamese
 
+### Search Strategies
+
+- **Vector Search**: Semantic similarity search using embeddings
+- **Keywords Search**: Traditional keyword-based search
+- **Hyde Search**: Hypothetical document embeddings for improved retrieval
+
 ## Development
-
-### Code Formatting
-
-This project uses Black for code formatting. Format your code before committing:
-
-```bash
-# Format all Python files
-black .
-
-# Check formatting without making changes
-black --check .
-```
-
-### Clear Cache
-
-If you encounter issues with Streamlit caching:
-
-```bash
-# Clear Streamlit cache
-streamlit cache clear
-```
 
 ### Docker Management
 
@@ -188,61 +206,37 @@ docker-compose logs -f qdrant
 ```
 rag_chatbot/
 ├── app.py                          # Main Streamlit application
-├── backend/                        # Core business logic
+├── backend/                        # Core business logic and services
 │   ├── session_manager.py         # Singleton state management
+│   ├── document_processor.py      # Main document processing orchestrator
 │   ├── collection_management.py   # Vector collection management
-│   ├── embeddings/                # Embedding strategies
-│   ├── llms/                      # LLM integrations
+│   ├── chunking/                  # Intelligent chunking strategies
+│   │   └── semantic_chunker.py    # Semantic chunking implementation
+│   ├── embeddings/                # Embedding strategies and factories
+│   ├── llms/                      # LLM integrations and factories
+│   ├── ocr/                       # OCR integration and configuration
+│   │   └── tesseract_ocr.py       # Tesseract OCR wrapper
 │   ├── prompts/                   # Prompt template system
+│   ├── strategies/                # Document processing strategies
+│   │   ├── interfaces.py          # Strategy interfaces
+│   │   ├── pdf_strategy.py        # PDF processing strategy
+│   │   └── results.py             # Processing result classes
+│   ├── services/                  # Core business services
 │   └── vector_db/                 # Qdrant integration
 │       └── qdrant_manager.py      # Qdrant client and collection management
 ├── ui/                            # Streamlit UI components
 │   ├── chat_main.py              # Chat interface
-│   ├── data_upload.py            # Document upload UI
+│   ├── data_upload.py            # Document upload UI with advanced processing
 │   ├── data_management.py        # Modular collection management and data exploration UI
 │   └── sidebar_navigation.py     # Navigation sidebar
 ├── config/                        # Configuration constants
+├── figures/                       # Extracted images from PDFs
 ├── plans/                        # Workflow planning documents
 ├── qdrant_storage/               # Local vector database storage
 ├── requirements.txt              # Python dependencies
 ├── docker-compose.yml           # Qdrant container configuration
 ├── .env.example                  # Environment variables template
-└── README.md                     # This file
+├── README.md                     # This file
+├── CLAUDE.md                     # Project development guide
+└── backend/CLAUDE.md             # Backend architecture documentation
 ```
-
-## Troubleshooting
-
-### Common Issues
-
-1. **Qdrant Connection Failed**
-
-   - Ensure Docker is running
-   - Check if Qdrant container is up: `docker-compose ps`
-   - Verify port 6333 is available
-
-2. **OpenAI API Errors**
-
-   - Check your API key in the sidebar or `.env` file
-   - Verify you have sufficient API credits
-   - Check network connectivity
-
-3. **CSV File Upload Issues**
-
-   - Ensure CSV files are properly formatted
-   - Check for encoding issues (UTF-8 recommended)
-   - Verify file size is reasonable (under 100MB recommended)
-
-4. **Memory Issues**
-
-   - Restart Qdrant container: `docker-compose restart qdrant`
-   - Clear Streamlit cache: `streamlit cache clear`
-
-5. **Conda Environment Issues**
-   - Ensure you're using the correct conda environment: `conda activate rag-chatbot`
-   - Verify Python version: `python --version`
-
-### Logs and Debugging
-
-- Check console output for detailed logging
-- Use the SessionManager status methods for system validation
-- Monitor Qdrant logs: `docker-compose logs -f qdrant`

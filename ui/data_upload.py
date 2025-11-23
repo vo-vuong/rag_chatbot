@@ -1,20 +1,38 @@
 """
-Data Upload UI - Kept language selection in upload flow.
+Data Upload UI - Enhanced with PDF processing support.
 
-Language is selected per-upload and stored in metadata.
+Supports both CSV and PDF file uploads with advanced processing strategies,
+semantic chunking, and comprehensive progress tracking.
 """
 
+import logging
+import os
 import re
+import tempfile
+import time
 import traceback
 import uuid
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import pandas as pd
+import pypdf
 import streamlit as st
 
 from backend.session_manager import SessionManager
 from backend.vector_db.qdrant_manager import QdrantManager
-from config.constants import EN, ENGLISH, NONE, VI, VIETNAMESE
+from config.constants import (
+    EN,
+    ENGLISH,
+    PDF_PROCESSING_STRATEGIES,
+    PDF_SIZE_LIMIT_MB,
+    PDF_SIZE_WARNING_MB,
+    VI,
+    VIETNAMESE,
+)
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class DataUploadUI:
@@ -22,6 +40,7 @@ class DataUploadUI:
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def render(self, header_number: int) -> None:
         """Render upload interface."""
@@ -70,137 +89,599 @@ class DataUploadUI:
         """Check if prerequisites are met."""
         if not self.session_manager.is_embedding_configured():
             st.warning(
-                "⚠️ Embeddings not configured. " "Please enter API key in sidebar first."
+                "⚠️ Embeddings not configured. Please enter API key in sidebar first."
             )
             return False
 
         return True
 
     def _render_upload_section(self) -> None:
-        """Render file upload section."""
+        """Render enhanced file upload section with PDF support."""
+        # Enhanced file uploader with both CSV and PDF support
         uploaded_files = st.file_uploader(
-            "Upload CSV files",
-            type=["csv"],
+            "Upload CSV and PDF files",
+            type=["csv", "pdf"],
             accept_multiple_files=True,
-            help="Upload one or more CSV files",
+            help="Upload one or more CSV or PDF files. PDFs will be processed with OCR "
+            "and semantic chunking.",
         )
 
         if uploaded_files:
-            self._process_uploaded_files(uploaded_files)
+            # Analyze uploaded files
+            files_info = self._analyze_uploaded_files(uploaded_files)
+            self.session_manager.set("uploaded_files_info", files_info)
+
+            # Display file analysis
+            self._display_file_analysis(files_info)
+
+            # Show PDF processing options if PDFs are present
+            csv_files = [f for f in uploaded_files if f.name.lower().endswith(".csv")]
+            pdf_files = [f for f in uploaded_files if f.name.lower().endswith(".pdf")]
+
+            if pdf_files:
+                st.subheader("📄 PDF Processing Configuration", divider="gray")
+                self._render_pdf_processing_options()
+
+            # Process button
+            st.divider()
+            if st.button("🚀 Process Files", type="primary", use_container_width=True):
+                self._process_uploaded_files(uploaded_files)
+
+    def _analyze_uploaded_files(self, uploaded_files: List) -> List[Dict]:
+        """
+        Analyze uploaded files and extract metadata.
+
+        Args:
+            uploaded_files: List of uploaded file objects
+
+        Returns:
+            List of dictionaries with file information
+        """
+        files_info = []
+        total_size_mb = 0
+
+        for uploaded_file in uploaded_files:
+            file_info = {
+                "name": uploaded_file.name,
+                "type": (
+                    "CSV" if uploaded_file.name.lower().endswith(".csv") else "PDF"
+                ),
+                "size_mb": round(uploaded_file.size / (1024 * 1024), 2),
+                "size_bytes": uploaded_file.size,
+                "warnings": [],
+            }
+
+            # Add size warnings for PDFs
+            if file_info["type"] == "PDF":
+                if file_info["size_mb"] > PDF_SIZE_LIMIT_MB:
+                    file_info["warnings"].append(
+                        f"⚠️ File too large ({file_info['size_mb']}MB > {PDF_SIZE_LIMIT_MB}MB limit)"
+                    )
+                elif file_info["size_mb"] > PDF_SIZE_WARNING_MB:
+                    file_info["warnings"].append(
+                        f"⚠️ Large file ({file_info['size_mb']}MB). Processing may take time."
+                    )
+
+            total_size_mb += file_info["size_mb"]
+            files_info.append(file_info)
+
+        return files_info
+
+    def _display_file_analysis(self, files_info: List[Dict]) -> None:
+        """Display analysis of uploaded files."""
+        st.subheader("📋 File Analysis", divider="gray")
+
+        # Summary metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Total Files", len(files_info))
+        with col2:
+            csv_count = sum(1 for f in files_info if f["type"] == "CSV")
+            st.metric("CSV Files", csv_count)
+        with col3:
+            pdf_count = sum(1 for f in files_info if f["type"] == "PDF")
+            st.metric("PDF Files", pdf_count)
+
+        # Detailed file information
+        for file_info in files_info:
+            file_type_icon = "📊" if file_info["type"] == "CSV" else "📄"
+
+            with st.expander(
+                f"{file_type_icon} {file_info['name']} ({file_info['size_mb']} MB)",
+                expanded=True,
+            ):
+                col1, col2 = st.columns([2, 1])
+
+                with col1:
+                    st.write(f"**Type:** {file_info['type']}")
+                    st.write(f"**Size:** {file_info['size_mb']} MB")
+
+                    # File type specific information
+                    if file_info["type"] == "PDF":
+                        st.info(
+                            "🤖 This PDF will be processed with OCR and semantic chunking"
+                        )
+                    else:
+                        st.info("📊 This CSV will be processed with standard chunking")
+
+                with col2:
+                    if file_info["warnings"]:
+                        for warning in file_info["warnings"]:
+                            st.warning(warning)
+                    else:
+                        st.success("✅ Ready to process")
+
+    def _render_pdf_processing_options(self) -> None:
+        """Render PDF processing configuration options."""
+        # Processing Strategy Selection
+        st.info("💡 **PDF Processing Strategy** - Choose how to process your PDF files")
+
+        # Get available strategies
+        strategy_options = list(PDF_PROCESSING_STRATEGIES.keys())
+
+        strategy_choice = st.selectbox(
+            "Processing Strategy:",
+            options=strategy_options,
+            index=0,  # Default to first option
+            help="Auto: Automatically selects the best strategy based on PDF content",
+            key="pdf_strategy_selectbox",
+        )
+
+        self.session_manager.set("pdf_processing_strategy", strategy_choice)
+
+        # Advanced options in expander
+        with st.expander("🔧 Advanced PDF Processing Options", expanded=False):
+            col1, col2 = st.columns(2)
+
+            with col1:
+                semantic_chunking = st.checkbox(
+                    "Enable Semantic Chunking",
+                    value=self.session_manager.get("pdf_semantic_chunking", True),
+                    help="Use title-based semantic chunking for better content understanding",
+                )
+                self.session_manager.set("pdf_semantic_chunking", semantic_chunking)
+
+                enable_ocr = st.checkbox(
+                    "Enable OCR Processing",
+                    value=self.session_manager.get("pdf_enable_ocr", True),
+                    help="Extract text from images within PDFs",
+                )
+                self.session_manager.set("pdf_enable_ocr", enable_ocr)
+
+            with col2:
+                if semantic_chunking:
+                    chunk_size = st.slider(
+                        "Chunk Size (characters):",
+                        min_value=500,
+                        max_value=3000,
+                        value=self.session_manager.get("pdf_chunk_size", 1000),
+                        step=100,
+                        help="Maximum size of each chunk",
+                    )
+                    self.session_manager.set("pdf_chunk_size", chunk_size)
+
+                    chunk_overlap = st.slider(
+                        "Chunk Overlap (characters):",
+                        min_value=0,
+                        max_value=500,
+                        value=self.session_manager.get("pdf_chunk_overlap", 100),
+                        step=50,
+                        help="Overlap between chunks for context preservation",
+                    )
+                    self.session_manager.set("pdf_chunk_overlap", chunk_overlap)
+
+        # Strategy information
+        strategy_info = {
+            "auto": "🤖 Automatically detects the best processing method based on PDF characteristics",
+            "ocr_only": "🔍 Forces OCR processing for image-based PDFs and scanned documents",
+            "hi_res": "🔬 High-resolution processing with OCR for image-based PDFs",
+            "fast": "⚡ Skips OCR for faster processing of text-only PDFs",
+            "fallback": "🛡️ Uses basic PDF processing as fallback for problematic files",
+        }
+
+        st.info(
+            f"**{PDF_PROCESSING_STRATEGIES[strategy_choice]}**: {strategy_info[strategy_choice]}"
+        )
 
     def _process_uploaded_files(self, uploaded_files: List) -> None:
-        """Process uploaded files."""
+        """
+        Process uploaded files with enhanced PDF support and progress tracking.
+
+        Args:
+            uploaded_files: List of uploaded file objects
+        """
         try:
-            all_data = []
+            # Initialize progress tracking
+            progress_container = st.container()
+            with progress_container:
+                st.subheader("🔄 Processing Files", divider="gray")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                details_text = st.empty()
 
-            for uploaded_file in uploaded_files:
-                file_extension = uploaded_file.name.split('.')[-1].lower()
+            all_chunks = []
+            processing_stats = {
+                "total_files": len(uploaded_files),
+                "processed_files": 0,
+                "failed_files": 0,
+                "total_chunks": 0,
+                "processing_time": 0.0,
+            }
 
-                if file_extension == 'csv':
-                    df = pd.read_csv(uploaded_file)
-                    all_data.append(df)
-                    st.success(f"✅ Loaded: {uploaded_file.name}")
-                else:
-                    st.warning(f"⚠️ Skipping unsupported file: {uploaded_file.name}")
+            start_time = time.time()
 
-            if all_data:
-                combined_df = pd.concat(all_data, ignore_index=True)
+            for i, uploaded_file in enumerate(uploaded_files):
+                file_extension = uploaded_file.name.split(".")[-1].lower()
+                file_progress = (i + 1) / len(uploaded_files)
 
-                doc_ids = [str(uuid.uuid4()) for _ in range(len(combined_df))]
-                combined_df['doc_id'] = doc_ids
-
-                self.session_manager.set("doc_ids", doc_ids)
-
-                st.success(
-                    f"📊 Loaded {len(combined_df)} rows from {len(all_data)} file(s)"
+                # Update progress
+                progress_bar.progress(file_progress)
+                status_text.markdown(
+                    f"**Processing file {i+1}/{len(uploaded_files)}**: `{uploaded_file.name}`"
                 )
-                st.dataframe(combined_df.head(10), use_container_width=True)
+                details_text.info(f"🔍 Analyzing file type: {file_extension.upper()}")
 
-                if len(combined_df) > 10:
-                    st.caption(f"Showing first 10 rows. Total: {len(combined_df)}")
+                try:
+                    if file_extension == "csv":
+                        chunks = self._process_csv_file(uploaded_file, details_text)
+                        if chunks:
+                            all_chunks.extend(chunks)
+                            processing_stats["processed_files"] += 1
+                            details_text.success(
+                                f"✅ CSV file processed: {len(chunks)} chunks created"
+                            )
 
-                self._render_chunking_section(combined_df)
+                    elif file_extension == "pdf":
+                        chunks = self._process_pdf_file(uploaded_file, details_text)
+                        if chunks:
+                            all_chunks.extend(chunks)
+                            processing_stats["processed_files"] += 1
+                            details_text.success(
+                                f"✅ PDF file processed: {len(chunks)} chunks created"
+                            )
 
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
-            st.code(traceback.format_exc())
+                    else:
+                        details_text.warning(
+                            f"⚠️ Skipping unsupported file type: {file_extension}"
+                        )
+                        processing_stats["failed_files"] += 1
 
-    def _render_chunking_section(self, df: pd.DataFrame) -> None:
-        """Render chunking configuration."""
-        st.subheader("📝 Chunking Configuration")
-
-        if df.empty:
-            st.warning("DataFrame is empty")
-            return
-
-        index_column = st.selectbox(
-            "Choose column to index:",
-            df.columns.tolist(),
-            help="Select the text column for vector search",
-        )
-
-        st.info(f"Selected: **{index_column}**")
-
-        chunk_option = st.radio(
-            "Chunking strategy:",
-            ["No Chunking", "Simple Split (by sentences)"],
-            help="How to split documents",
-            key="chunkOption",
-        )
-
-        if st.button("🔄 Process Chunks", type="primary"):
-            chunks_df = self._process_chunks(df, index_column, chunk_option)
-
-            if chunks_df is not None and not chunks_df.empty:
-                st.success(f"✅ Created {len(chunks_df)} chunks!")
-                st.dataframe(chunks_df.head(10), use_container_width=True)
-                self.session_manager.set("chunks_df", chunks_df)
-
-    def _process_chunks(
-        self, df: pd.DataFrame, index_column: str, chunk_option: str
-    ) -> Optional[pd.DataFrame]:
-        """Process dataframe into chunks."""
-        try:
-            chunk_records = []
-            progress_bar = st.progress(0, text="Processing...")
-            total = len(df)
-
-            for idx, (_, row) in enumerate(df.iterrows()):
-                selected_value = row[index_column]
-
-                if not isinstance(selected_value, str) or not selected_value:
+                except Exception as file_error:
+                    processing_stats["failed_files"] += 1
+                    details_text.error(
+                        f"❌ Error processing {uploaded_file.name}: {str(file_error)}"
+                    )
                     continue
 
-                if chunk_option == "No Chunking":
-                    chunks = [selected_value]
-                else:
-                    sentences = re.split(r'[.!?]+', selected_value)
-                    chunks = [s.strip() for s in sentences if s.strip()]
+            # Complete progress
+            processing_stats["processing_time"] = round(time.time() - start_time, 2)
+            processing_stats["total_chunks"] = len(all_chunks)
 
-                for chunk in chunks:
+            progress_bar.progress(1.0)
+            status_text.markdown("**Processing Complete!**")
+
+            # Clear progress container
+            time.sleep(2)
+            progress_container.empty()
+
+            # Display results
+            if all_chunks:
+                self._display_processing_results(all_chunks, processing_stats)
+                self._render_enhanced_chunking_section()
+            else:
+                st.error("❌ No valid content was extracted from the uploaded files")
+
+        except Exception as e:
+            st.error(f"❌ Critical Error: {str(e)}")
+            st.code(traceback.format_exc())
+
+    def _process_csv_file(self, uploaded_file, status_text) -> List[Dict]:
+        """Process a single CSV file."""
+        status_text.info("📊 Reading CSV file...")
+
+        df = pd.read_csv(uploaded_file)
+        chunks = []
+
+        for idx, row in df.iterrows():
+            # Create a chunk for each row
+            chunk_text = " | ".join(
+                [f"{col}: {val}" for col, val in row.items() if pd.notna(val)]
+            )
+
+            chunk = {
+                "chunk": chunk_text,
+                "source_file": uploaded_file.name,
+                "file_type": "CSV",
+                "row_index": idx,
+                "doc_id": str(uuid.uuid4()),
+                "metadata": {
+                    "source_row": idx,
+                    "total_columns": len(df.columns),
+                    "columns": list(df.columns),
+                },
+            }
+            chunks.append(chunk)
+
+        return chunks
+
+    def _process_pdf_file(self, uploaded_file, status_text) -> List[Dict]:
+        """Process a single PDF file using the session-managed document processor."""
+        try:
+            status_text.info("📄 Initializing PDF processor...")
+
+            # Check if session manager has PDF processor available
+            if not self.session_manager.is_pdf_processor_available():
+                status_text.warning(
+                    "⚠️ PDF processor not available. Using basic PDF processing."
+                )
+                return self._fallback_pdf_processing(uploaded_file, status_text)
+
+            status_text.info("🔍 Extracting content from PDF...")
+
+            # Create temporary file for processing
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                temp_file.write(uploaded_file.read())
+                temp_file_path = temp_file.name
+
+            try:
+                # Process the PDF using session-managed processor
+                with st.spinner("Processing PDF..."):
+                    result = self.session_manager.process_document_with_session(
+                        temp_file_path,
+                        languages=[self.session_manager.get("language", "en")],
+                        original_filename=uploaded_file.name,
+                    )
+
+                if result and result.success:
+                    status_text.success("✅ PDF content extracted successfully")
+
+                    # Convert processing result to chunks
+                    chunks = []
+                    for i, element in enumerate(result.elements):
+                        chunk = {
+                            "chunk": element.text,
+                            "source_file": uploaded_file.name,
+                            "file_type": "PDF",
+                            "chunk_index": i,
+                            "doc_id": str(uuid.uuid4()),
+                            "metadata": {
+                                "processing_strategy": result.metadata.get(
+                                    "processor", {}
+                                ).get("strategy_used", "unknown"),
+                                "ocr_used": result.metadata.get("ocr_used", False),
+                                "total_pages": result.metadata.get("total_pages", 0),
+                                "chunk_type": "extracted_content",
+                                "element_type": getattr(element, 'type', 'text'),
+                                "page_number": getattr(element, 'page_number', None),
+                            },
+                        }
+                        chunks.append(chunk)
+
+                    return chunks
+                else:
+                    error_msg = result.error_message if result else "Unknown error"
+                    status_text.error(f"❌ PDF processing failed: {error_msg}")
+                    return []
+
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+
+        except Exception as e:
+            status_text.error(f"❌ PDF processing error: {str(e)}")
+            logger.error(
+                f"PDF processing error for {uploaded_file.name}: {e}", exc_info=True
+            )
+            return []
+
+    def _fallback_pdf_processing(self, uploaded_file, status_text) -> List[Dict]:
+        """Fallback PDF processing using basic libraries."""
+        status_text.info("🔄 Attempting fallback PDF processing...")
+
+        try:
+            # Read PDF content
+            pdf_reader = pypdf.PdfReader(uploaded_file)
+            text_content = ""
+
+            for page_num, page in enumerate(pdf_reader.pages):
+                page_text = page.extract_text()
+                if page_text.strip():
+                    text_content += f"\n\n--- Page {page_num + 1} ---\n{page_text}"
+
+            if text_content.strip():
+                chunks = [
+                    {
+                        "chunk": text_content.strip(),
+                        "source_file": uploaded_file.name,
+                        "file_type": "PDF",
+                        "chunk_index": 0,
+                        "doc_id": str(uuid.uuid4()),
+                        "metadata": {
+                            "processing_strategy": "fallback_pypdf2",
+                            "ocr_used": False,
+                            "total_pages": len(pdf_reader.pages),
+                            "chunk_type": "fallback_extraction",
+                        },
+                    }
+                ]
+                return chunks
+            else:
+                status_text.warning("⚠️ No text content found in PDF")
+                return []
+
+        except Exception as e:
+            status_text.error(f"❌ Fallback processing failed: {str(e)}")
+            return []
+
+    def _display_processing_results(self, chunks: List[Dict], stats: Dict) -> None:
+        """Display processing results and statistics."""
+        st.success("🎉 Files processed successfully!")
+
+        # Statistics
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric(
+                "Files Processed",
+                f"{stats['processed_files']}/{stats['total_files']}",
+            )
+        with col2:
+            st.metric("Total Chunks", stats["total_chunks"])
+        with col3:
+            st.metric("Failed Files", stats["failed_files"])
+        with col4:
+            st.metric("Processing Time", f"{stats['processing_time']}s")
+
+        # Create DataFrame for chunks
+        chunks_df = pd.DataFrame(chunks)
+        self.session_manager.set("chunks_df", chunks_df)
+
+        # Display sample chunks
+        if len(chunks_df) > 0:
+            st.subheader("📝 Extracted Content Preview", divider="gray")
+
+            # Show first few chunks
+            display_count = min(5, len(chunks_df))
+            for idx, (i, chunk_row) in enumerate(
+                chunks_df.head(display_count).iterrows()
+            ):
+                with st.expander(
+                    f"Chunk {idx+1} - {chunk_row['source_file']}",
+                    expanded=idx == 0,
+                ):
+                    st.write("**Source:**", chunk_row["source_file"])
+                    st.write("**Type:**", chunk_row["file_type"])
+                    st.write("**Content Preview:**")
+                    st.text_area(
+                        "Content",
+                        (
+                            chunk_row["chunk"][:500] + "..."
+                            if len(chunk_row["chunk"]) > 500
+                            else chunk_row["chunk"]
+                        ),
+                        height=150,
+                        disabled=True,
+                        label_visibility="collapsed",
+                        key=f"chunk_content_{i}",
+                    )
+                    if "metadata" in chunk_row:
+                        st.write("**Metadata:**")
+                        st.json(chunk_row["metadata"])
+
+            if len(chunks_df) > display_count:
+                st.info(
+                    f"📊 Showing first {display_count} of {len(chunks_df)} total chunks"
+                )
+
+    def _render_enhanced_chunking_section(self) -> None:
+        """Render enhanced chunking configuration section."""
+        chunks_df = self.session_manager.get("chunks_df")
+
+        if chunks_df is None or chunks_df.empty:
+            st.warning("No chunks available for further processing")
+            return
+
+        st.subheader("🔧 Additional Chunking Options", divider="gray")
+
+        st.info(
+            "ℹ️ Your files have been processed. You can apply additional chunking strategies if needed."
+        )
+
+        # Check if we have PDF files that might benefit from semantic chunking
+        has_pdfs = "PDF" in chunks_df["file_type"].values
+
+        chunking_option = st.radio(
+            "Additional Processing:",
+            options=[
+                "No Additional Processing",
+                "Re-chunk with Semantic Splitting",
+                "Re-chunk with Simple Splitting",
+            ],
+            help="Choose additional processing strategy",
+            index=0,
+        )
+
+        if chunking_option != "No Additional Processing" and st.button(
+            "🔄 Apply Additional Processing", type="secondary"
+        ):
+            with st.spinner("Applying additional chunking..."):
+                try:
+                    if (
+                        chunking_option == "Re-chunk with Semantic Splitting"
+                        and has_pdfs
+                    ):
+                        # Apply semantic chunking for PDFs
+                        processed_chunks_df = self._apply_semantic_chunking(chunks_df)
+                    else:
+                        # Apply simple chunking
+                        processed_chunks_df = self._apply_simple_chunking(chunks_df)
+
+                    if (
+                        processed_chunks_df is not None
+                        and not processed_chunks_df.empty
+                    ):
+                        self.session_manager.set("chunks_df", processed_chunks_df)
+                        st.success(
+                            f"✅ Additional processing complete! New total: {len(processed_chunks_df)} chunks"
+                        )
+                        st.dataframe(
+                            processed_chunks_df.head(10),
+                            use_container_width=True,
+                        )
+                    else:
+                        st.warning("⚠️ No chunks created during additional processing")
+
+                except Exception as e:
+                    st.error(f"❌ Error during additional processing: {str(e)}")
+
+    def _apply_semantic_chunking(
+        self, chunks_df: pd.DataFrame
+    ) -> Optional[pd.DataFrame]:
+        """Apply semantic chunking to existing chunks."""
+        try:
+            # This would integrate with the semantic chunker from Phase 1
+            # For now, return the original chunks
+            st.info(
+                "🤖 Semantic chunking would be applied here with Phase 1 integration"
+            )
+            return chunks_df
+        except Exception as e:
+            st.error(f"Semantic chunking error: {str(e)}")
+            return None
+
+    def _apply_simple_chunking(self, chunks_df: pd.DataFrame) -> Optional[pd.DataFrame]:
+        """Apply simple sentence-based chunking to existing chunks."""
+        try:
+            chunk_records = []
+
+            for _, row in chunks_df.iterrows():
+                chunk_text = row["chunk"]
+
+                # Split by sentences
+                sentences = re.split(r"[.!?]+", chunk_text)
+                sentences = [s.strip() for s in sentences if s.strip()]
+
+                for sentence in sentences:
                     chunk_record = {
-                        'chunk': chunk,
-                        **{k: v for k, v in row.to_dict().items() if k != index_column},
+                        "chunk": sentence,
+                        "source_file": row.get("source_file", "unknown"),
+                        "file_type": row.get("file_type", "unknown"),
+                        "doc_id": str(uuid.uuid4()),
+                        "metadata": {
+                            "processing_type": "simple_rechunking",
+                            "original_chunk_id": row.get("doc_id", "unknown"),
+                        },
                     }
                     chunk_records.append(chunk_record)
 
-                progress_bar.progress((idx + 1) / total)
-
-            progress_bar.empty()
-
-            if not chunk_records:
-                st.warning("No valid chunks created")
-                return None
-
-            return pd.DataFrame(chunk_records)
+            return pd.DataFrame(chunk_records) if chunk_records else None
 
         except Exception as e:
-            st.error(f"Error: {str(e)}")
-            st.code(traceback.format_exc())
+            st.error(f"Simple chunking error: {str(e)}")
             return None
 
     def _handle_save_data(self) -> None:
-        """Save data to Qdrant."""
+        """Save enhanced chunks data to Qdrant."""
         chunks_df = self.session_manager.get("chunks_df")
 
         if chunks_df is None or chunks_df.empty:
@@ -218,70 +699,168 @@ class DataUploadUI:
             return
 
         try:
-            with st.spinner("Saving..."):
-                # Step 1: Qdrant
-                st.info("🔄 Step 1/4: Connecting to Qdrant...")
-                qdrant_manager = QdrantManager()
+            # Enhanced save progress tracking
+            progress_container = st.container()
+            with progress_container:
+                st.subheader("💾 Saving to Vector Database", divider="gray")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                details_text = st.empty()
 
-                if not qdrant_manager.is_healthy():
-                    st.error(
-                        "❌ Qdrant not running. Start with:\n"
-                        "```bash\ndocker-compose up -d\n```"
-                    )
-                    return
+            total_chunks = len(chunks_df)
 
-                # Step 2: Collection
-                st.info("🔄 Step 2/4: Setting up collection...")
-                dimension = self.session_manager.get("embedding_dimension")
+            # Step 1: Connect to Qdrant
+            progress_bar.progress(0.1)
+            status_text.markdown("**Step 1/5: Connecting to Qdrant...**")
+            details_text.info("🔄 Initializing vector database connection...")
 
-                if not qdrant_manager.ensure_collection(dimension):
-                    st.error("❌ Failed to create collection")
-                    return
+            qdrant_manager = QdrantManager()
 
-                # Step 3: Embeddings
-                st.info("🔄 Step 3/4: Generating embeddings...")
-                chunks = chunks_df['chunk'].tolist()
-
-                try:
-                    embeddings = embedding_strategy.embed_texts(chunks)
-                except Exception as e:
-                    st.error(f"❌ Embedding error: {str(e)}")
-                    return
-
-                # Step 4: Upload
-                st.info("🔄 Step 4/4: Uploading to database...")
-
-                success = qdrant_manager.add_documents(
-                    chunks_df=chunks_df,
-                    embeddings=embeddings,
-                    language=language,
-                    source_file="uploaded_csv",
+            if not qdrant_manager.is_healthy():
+                progress_container.empty()
+                st.error(
+                    "❌ Qdrant not running. Start with:\n"
+                    "```bash\ndocker-compose up -d\n```"
                 )
+                return
 
-                if not success:
-                    st.error("❌ Upload failed")
-                    return
+            details_text.success("✅ Connected to Qdrant successfully")
 
-                # Save to session
-                self.session_manager.update(
-                    {
-                        "qdrant_manager": qdrant_manager,
-                        "collection_name": qdrant_manager.collection_name,
-                        "data_saved_success": True,
-                        "source_data": "UPLOAD",
-                    }
+            # Step 2: Setup Collection
+            progress_bar.progress(0.2)
+            status_text.markdown("**Step 2/5: Setting up collection...**")
+            details_text.info("🔄 Creating/verifying vector collection...")
+
+            dimension = self.session_manager.get("embedding_dimension")
+
+            if not qdrant_manager.ensure_collection(dimension):
+                progress_container.empty()
+                st.error("❌ Failed to create collection")
+                return
+
+            details_text.success(
+                f"✅ Collection '{qdrant_manager.collection_name}' ready"
+            )
+
+            # Step 3: Generate Embeddings
+            progress_bar.progress(0.3)
+            status_text.markdown("**Step 3/5: Generating embeddings...**")
+            details_text.info(f"🔄 Processing {total_chunks} chunks...")
+
+            chunks = chunks_df["chunk"].tolist()
+
+            # Embeddings with progress
+            try:
+                embeddings = embedding_strategy.embed_texts(chunks)
+                details_text.success(f"✅ Generated {len(embeddings)} embeddings")
+            except Exception as e:
+                progress_container.empty()
+                st.error(f"❌ Embedding error: {str(e)}")
+                return
+
+            # Step 4: Prepare Enhanced Metadata
+            progress_bar.progress(0.6)
+            status_text.markdown("**Step 4/5: Preparing enhanced metadata...**")
+            details_text.info("🔄 Processing document metadata...")
+
+            # Enhanced source file tracking
+            source_files = (
+                chunks_df["source_file"].unique()
+                if "source_file" in chunks_df.columns
+                else ["uploaded_files"]
+            )
+            file_types = (
+                chunks_df["file_type"].value_counts().to_dict()
+                if "file_type" in chunks_df.columns
+                else {}
+            )
+
+            # Create enhanced source description
+            source_description = f"uploaded_{len(source_files)}_files"
+            if file_types:
+                type_descriptions = [
+                    f"{count}_{file_type.lower()}"
+                    for file_type, count in file_types.items()
+                ]
+                source_description = "_".join(type_descriptions)
+
+            details_text.success(
+                f"✅ Metadata prepared for {len(source_files)} source files"
+            )
+
+            # Step 5: Upload to Database
+            progress_bar.progress(0.8)
+            status_text.markdown("**Step 5/5: Uploading to database...**")
+            details_text.info(f"🔄 Storing {total_chunks} document vectors...")
+
+            success = qdrant_manager.add_documents(
+                chunks_df=chunks_df,
+                embeddings=embeddings,
+                language=language,
+                source_file=source_description,
+            )
+
+            if not success:
+                progress_container.empty()
+                st.error("❌ Upload failed")
+                return
+
+            # Complete progress
+            progress_bar.progress(1.0)
+            status_text.markdown("**Save Complete!**")
+            details_text.success("✅ All documents saved to vector database")
+
+            # Save to session with enhanced information
+            self.session_manager.update(
+                {
+                    "qdrant_manager": qdrant_manager,
+                    "collection_name": qdrant_manager.collection_name,
+                    "data_saved_success": True,
+                    "source_data": "UPLOAD",
+                    "uploaded_file_types": file_types,
+                    "last_upload_stats": {
+                        "total_chunks": total_chunks,
+                        "source_files_count": len(source_files),
+                        "file_types": file_types,
+                        "language": language,
+                    },
+                }
+            )
+
+            # Clear progress and show success
+            time.sleep(2)
+            progress_container.empty()
+
+            st.success("🎉 Data saved successfully!")
+
+            # Enhanced statistics display
+            stats = qdrant_manager.get_statistics()
+
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Documents", stats.get("total_documents", 0))
+            with col2:
+                st.metric("Collection", qdrant_manager.collection_name)
+            with col3:
+                st.metric("Language Saved", language.upper())
+            with col4:
+                st.metric("Chunks Uploaded", total_chunks)
+
+            # File type breakdown
+            if file_types:
+                st.subheader("📄 File Type Breakdown", divider="gray")
+                type_cols = st.columns(len(file_types))
+                for i, (file_type, count) in enumerate(file_types.items()):
+                    with type_cols[i]:
+                        st.metric(f"{file_type} Files", count)
+
+            # Success message with processing details
+            files_info = self.session_manager.get("uploaded_files_info", [])
+            if files_info:
+                st.info(
+                    f"📊 Successfully processed and saved content from {len(files_info)} uploaded files"
                 )
-
-                st.success("✅ Data saved successfully!")
-
-                # Stats
-                stats = qdrant_manager.get_statistics()
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Total Documents", stats.get("total_documents", 0))
-                with col2:
-                    st.metric("Collection", qdrant_manager.collection_name)
 
         except Exception as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"❌ Save Error: {str(e)}")
             st.code(traceback.format_exc())

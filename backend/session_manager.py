@@ -4,11 +4,13 @@ Implements Singleton pattern for centralized state management.
 """
 
 import logging
-from typing import Any, Dict
+from pathlib import Path
+from typing import Any, Dict, Optional, Union
 
 import pandas as pd
 import streamlit as st
 
+from backend.document_processor import DocumentProcessor, ProcessingResult
 from backend.prompts.prompt_manager import PromptManager
 from config.constants import PAGE_CHAT
 
@@ -85,6 +87,20 @@ class SessionManager:
             'chunk_overlap': 20,  # Overlap between chunks
             'chunkOption': None,  # Chunking strategy
             'semantic_embedding_option': 'TF-IDF',
+            # ============================================================
+            # PDF PROCESSING CONFIGURATION
+            # ============================================================
+            'pdf_processing_strategy': 'auto',  # auto, ocr, fast, fallback
+            'pdf_enable_ocr': True,  # Enable OCR for PDFs
+            'pdf_semantic_chunking': True,  # Use semantic chunking for PDFs
+            'pdf_chunk_size': 1000,  # Chunk size for PDF semantic chunking
+            'pdf_chunk_overlap': 100,  # Overlap for PDF chunks
+            'pdf_combine_small_chunks': 1000,  # Threshold to combine small chunks
+            'pdf_processing_progress': {},  # Progress tracking for PDF processing
+            'uploaded_files_info': [],  # Information about uploaded files
+            'document_processor': None,  # DocumentProcessor instance (lazy initialization)
+            'pdf_processing_stats': {},  # PDF processing statistics
+            'pdf_error_states': {},  # Error states for recovery
             # ============================================================
             # SEARCH & RETRIEVAL
             # ============================================================
@@ -231,6 +247,327 @@ class SessionManager:
         """Get the active chat prompt template."""
         template_name = self.get('active_chat_template', 'chat_conversational')
         return self.get_prompt_template(template_name)
+
+    # ============================================================
+    # PDF PROCESSING STATE MANAGEMENT
+    # ============================================================
+
+    def initialize_document_processor(self) -> Optional['DocumentProcessor']:
+        """
+        Initialize DocumentProcessor with current configuration.
+
+        Returns:
+            DocumentProcessor instance or None if initialization fails
+        """
+        if self.get('document_processor') is None:
+            try:
+                # Get current PDF configuration
+                config = self.get_pdf_config()
+
+                # Create processor instance
+                processor = DocumentProcessor(config=config)
+                self.set('document_processor', processor)
+
+                logger.info("DocumentProcessor initialized successfully")
+                return processor
+
+            except Exception as e:
+                logger.error(f"Failed to initialize DocumentProcessor: {e}")
+                self.set_pdf_error('processor_init', str(e))
+                return None
+
+        return self.get('document_processor')
+
+    def get_pdf_config(self) -> Dict[str, Any]:
+        """
+        Get current PDF processing configuration.
+
+        Returns:
+            Dictionary containing PDF processing configuration
+        """
+        return {
+            "pdf": {
+                "strategy": self.get("pdf_processing_strategy", "auto"),
+                "infer_table_structure": True,
+                "extract_images": self.get(
+                    "pdf_enable_ocr", True
+                ),  # Enable image extraction when OCR is enabled
+                "chunk_after_extraction": False,  # Handle chunking separately
+            },
+            "ocr": {
+                "languages": [self.get("language", "en")],
+                "enabled": self.get("pdf_enable_ocr", True),
+            },
+            "chunking": {
+                "chunk_size": self.get("pdf_chunk_size", 1000),
+                "chunk_overlap": self.get("pdf_chunk_overlap", 100),
+                "max_characters": self.get("pdf_chunk_size", 1000) * 2,
+                "combine_text_under_n_chars": self.get(
+                    "pdf_combine_small_chunks", 1000
+                ),
+                "new_after_n_chars": 3000,
+                "multipage_sections": True,
+                "enforce_strict": False,
+            },
+        }
+
+    def set_pdf_config(self, config: Dict[str, Any]) -> None:
+        """
+        Set PDF processing configuration.
+
+        Args:
+            config: Configuration dictionary
+        """
+        # Update relevant session state variables
+        if "pdf" in config:
+            pdf_config = config["pdf"]
+            if "strategy" in pdf_config:
+                self.set("pdf_processing_strategy", pdf_config["strategy"])
+
+        if "ocr" in config:
+            ocr_config = config["ocr"]
+            if "enabled" in ocr_config:
+                self.set("pdf_enable_ocr", ocr_config["enabled"])
+
+        if "chunking" in config:
+            chunking_config = config["chunking"]
+            self.set("pdf_chunk_size", chunking_config.get("chunk_size", 1000))
+            self.set("pdf_chunk_overlap", chunking_config.get("chunk_overlap", 100))
+            self.set(
+                "pdf_combine_small_chunks",
+                chunking_config.get("combine_text_under_n_chars", 1000),
+            )
+
+        # Reset document processor to apply new configuration
+        self.set('document_processor', None)
+        logger.info(
+            "PDF configuration updated, DocumentProcessor will be reinitialized"
+        )
+
+    def update_processing_progress(
+        self, file_name: str, progress: float, status: str = "processing"
+    ) -> None:
+        """
+        Update processing progress for a file.
+
+        Args:
+            file_name: Name of the file being processed
+            progress: Progress percentage (0-100)
+            status: Current status (processing, completed, error)
+        """
+        current_progress = self.get('pdf_processing_progress', {})
+        current_progress[file_name] = {
+            'progress': progress,
+            'status': status,
+            'timestamp': pd.Timestamp.now().isoformat(),
+        }
+        self.set('pdf_processing_progress', current_progress)
+        logger.debug(f"Updated progress for {file_name}: {progress}% ({status})")
+
+    def get_file_processing_progress(self, file_name: str) -> Dict[str, Any]:
+        """
+        Get processing progress for a specific file.
+
+        Args:
+            file_name: Name of the file
+
+        Returns:
+            Dictionary containing progress information
+        """
+        progress = self.get('pdf_processing_progress', {})
+        return progress.get(file_name, {'progress': 0, 'status': 'not_started'})
+
+    def update_processing_statistics(
+        self, file_name: str, stats: Dict[str, Any]
+    ) -> None:
+        """
+        Update processing statistics for a file.
+
+        Args:
+            file_name: Name of the processed file
+            stats: Processing statistics dictionary
+        """
+        current_stats = self.get('pdf_processing_stats', {})
+        current_stats[file_name] = {
+            **stats,
+            'timestamp': pd.Timestamp.now().isoformat(),
+        }
+        self.set('pdf_processing_stats', current_stats)
+        logger.debug(f"Updated statistics for {file_name}: {stats}")
+
+    def get_processing_statistics(self) -> Dict[str, Any]:
+        """
+        Get overall processing statistics.
+
+        Returns:
+            Dictionary containing processing statistics
+        """
+        stats = self.get('pdf_processing_stats', {})
+
+        # Calculate aggregates
+        total_files = len(stats)
+        successful_files = sum(1 for s in stats.values() if s.get('success', False))
+        failed_files = total_files - successful_files
+        total_chunks = sum(s.get('chunks_created', 0) for s in stats.values())
+
+        # Get document processor stats if available
+        processor = self.get('document_processor')
+        processor_stats = processor.get_processing_stats() if processor else {}
+
+        return {
+            'total_files': total_files,
+            'successful_files': successful_files,
+            'failed_files': failed_files,
+            'success_rate': (successful_files / max(1, total_files)) * 100,
+            'total_chunks': total_chunks,
+            'file_details': stats,
+            'processor_stats': processor_stats,
+        }
+
+    def set_pdf_error(self, error_key: str, error_message: str) -> None:
+        """
+        Set PDF processing error state.
+
+        Args:
+            error_key: Key identifying the error
+            error_message: Error message
+        """
+        error_states = self.get('pdf_error_states', {})
+        error_states[error_key] = {
+            'message': error_message,
+            'timestamp': pd.Timestamp.now().isoformat(),
+        }
+        self.set('pdf_error_states', error_states)
+        logger.error(f"PDF processing error ({error_key}): {error_message}")
+
+    def get_pdf_errors(self) -> Dict[str, Any]:
+        """
+        Get PDF processing error states.
+
+        Returns:
+            Dictionary containing error states
+        """
+        return self.get('pdf_error_states', {})
+
+    def clear_pdf_errors(self) -> None:
+        """Clear PDF processing error states."""
+        self.set('pdf_error_states', {})
+        logger.info("PDF processing errors cleared")
+
+    def reset_pdf_processing_state(self) -> None:
+        """Reset PDF processing state while preserving configuration."""
+        self.update(
+            {
+                'pdf_processing_progress': {},
+                'pdf_processing_stats': {},
+                'pdf_error_states': {},
+                'uploaded_files_info': [],
+            }
+        )
+
+        # Reset document processor to force reinitialization
+        self.set('document_processor', None)
+
+        logger.info("PDF processing state reset")
+
+    def is_pdf_processor_available(self) -> bool:
+        """
+        Check if PDF processor is available and initialized.
+
+        Returns:
+            True if PDF processor is available
+        """
+        processor = self.get('document_processor')
+        if processor is None:
+            processor = self.initialize_document_processor()
+
+        return processor is not None
+
+    def get_pdf_processor_info(self) -> Dict[str, Any]:
+        """
+        Get information about the PDF processor.
+
+        Returns:
+            Dictionary containing processor information
+        """
+        if not self.is_pdf_processor_available():
+            return {'available': False, 'error': 'Processor not initialized'}
+
+        processor = self.get('document_processor')
+        try:
+            return {
+                'available': True,
+                'config_info': processor.get_config_info(),
+                'stats': processor.get_processing_stats(),
+                'supported_files': processor.get_supported_file_types(),
+            }
+        except Exception as e:
+            return {'available': False, 'error': str(e)}
+
+    def process_document_with_session(
+        self,
+        file_path: Union[str, Path],
+        file_content: Optional[bytes] = None,
+        original_filename: Optional[str] = None,
+        **kwargs,
+    ) -> Optional['ProcessingResult']:  # ProcessingResult from document_processor
+        """
+        Process a document using session-managed processor.
+
+        Args:
+            file_path: Path to the document
+            file_content: Optional file content bytes
+            original_filename: Original filename to override metadata
+            **kwargs: Additional processing parameters
+
+        Returns:
+            ProcessingResult or None if processing fails
+        """
+        try:
+            # Initialize processor if needed
+            processor = self.initialize_document_processor()
+            if processor is None:
+                raise Exception("Failed to initialize document processor")
+
+            # Update progress
+            file_name = str(file_path).split('/')[-1].split('\\')[-1]
+            self.update_processing_progress(file_name, 0, "starting")
+
+            # Process document
+            self.update_processing_progress(file_name, 50, "processing")
+            result = processor.process_document(file_path, original_filename=original_filename, **kwargs)
+
+            # Update statistics based on result
+            if result.success:
+                self.update_processing_progress(file_name, 100, "completed")
+                self.update_processing_statistics(
+                    file_name,
+                    {
+                        'success': True,
+                        'chunks_created': len(result.elements),
+                        'strategy_used': result.metadata.get(
+                            'strategy_used', 'unknown'
+                        ),
+                        'ocr_used': result.metadata.get('ocr_used', False),
+                        'total_pages': result.metadata.get('total_pages', 0),
+                    },
+                )
+            else:
+                self.update_processing_progress(file_name, 100, "error")
+                error_message = result.error_message or "Unknown processing error"
+                self.set_pdf_error(f"processing_{file_name}", error_message)
+                self.update_processing_statistics(
+                    file_name, {'success': False, 'error_message': error_message}
+                )
+
+            return result
+
+        except Exception as e:
+            file_name = str(file_path).split('/')[-1].split('\\')[-1]
+            self.update_processing_progress(file_name, 100, "error")
+            self.set_pdf_error(f"processing_{file_name}", str(e))
+            logger.error(f"Document processing failed for {file_name}: {e}")
+            return None
 
     # ============================================================
     # VALIDATION & CHECK METHODS

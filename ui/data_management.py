@@ -8,6 +8,7 @@ and data operations within the RAG system.
 import time
 from typing import Any, Dict, List
 
+import pandas as pd
 import streamlit as st
 
 from backend.session_manager import SessionManager
@@ -538,7 +539,9 @@ class CollectionDataPointsRenderer:
         collection_info = self.qdrant_manager.get_detailed_collection_info(
             self.collection_name
         )
-        total_collection_points = collection_info.get('points_count', 0)
+        total_collection_points = (
+            collection_info.get('points_count', 0) if collection_info else 0
+        )
 
         if is_search_mode:
             return self._get_search_results(page_size, search_term)
@@ -716,8 +719,6 @@ class CollectionDataPointsRenderer:
             table_data.append(row_data)
 
         # Convert to DataFrame and display
-        import pandas as pd
-
         df = pd.DataFrame(table_data)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
@@ -880,22 +881,3 @@ class DataManagementUI:
             return self.qdrant_manager.is_healthy()
         except Exception:
             return False
-
-    def _format_bytes(self, bytes_value: int) -> str:
-        """
-        Format bytes into human readable format.
-
-        Args:
-            bytes_value: Number of bytes to format
-
-        Returns:
-            Formatted string with appropriate units
-        """
-        if bytes_value == 0:
-            return "0 B"
-
-        for unit in ['B', 'KB', 'MB', 'GB', 'TB']:
-            if bytes_value < 1024.0:
-                return f"{bytes_value:.1f} {unit}"
-            bytes_value /= 1024.0
-        return f"{bytes_value:.1f} PB"

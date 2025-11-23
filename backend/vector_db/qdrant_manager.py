@@ -166,7 +166,9 @@ class QdrantManager:
                 # Simple metadata (no session_id)
                 payload = {
                     "chunk": row.get("chunk", ""),
-                    "source_file": source_file,
+                    "source_file": row.get(
+                        "source_file", source_file
+                    ),  # Use individual chunk source_file, fallback to parameter
                     "timestamp": timestamp,
                     "chunk_index": idx,
                 }

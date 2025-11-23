@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from .chunking.semantic_chunker import SemanticChunker
+from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
 from .strategies import PDFProcessingStrategy
 from .strategies.interfaces import DocumentProcessingStrategy
 from .strategies.results import ProcessingResult
@@ -268,7 +269,7 @@ class DocumentProcessor:
             strategy = self.strategies.get(file_extension)
             if strategy and hasattr(strategy, 'get_pdf_info'):
                 try:
-                    strategy_info = strategy.get_pdf_info(file_path)
+                    strategy_info = getattr(strategy, 'get_pdf_info')(file_path)
                     info.update(strategy_info)
                 except Exception as e:
                     info["strategy_info_error"] = str(e)
@@ -334,8 +335,6 @@ class DocumentProcessor:
 
         # Add OCR information if available
         try:
-            from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
-
             if is_ocr_available():
                 ocr = get_tesseract_ocr()
                 config_info["ocr_info"] = ocr.get_ocr_info()

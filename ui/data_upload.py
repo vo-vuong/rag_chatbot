@@ -2,7 +2,7 @@
 Data Upload UI - Enhanced with PDF processing support.
 
 Supports both CSV and PDF file uploads with advanced processing strategies,
-semantic chunking, and comprehensive progress tracking.
+and comprehensive progress tracking.
 """
 
 import logging
@@ -241,13 +241,6 @@ class DataUploadUI:
                 )
                 self.session_manager.set("pdf_semantic_chunking", semantic_chunking)
 
-                enable_ocr = st.checkbox(
-                    "Enable OCR Processing",
-                    value=self.session_manager.get("pdf_enable_ocr", True),
-                    help="Extract text from images within PDFs",
-                )
-                self.session_manager.set("pdf_enable_ocr", enable_ocr)
-
             with col2:
                 if semantic_chunking:
                     chunk_size = st.slider(
@@ -445,19 +438,18 @@ class DataUploadUI:
                             "chunk_index": i,
                             "doc_id": str(uuid.uuid4()),
                             "metadata": {
-                                "processing_strategy": result.metadata.get(
-                                    "processor", {}
-                                ).get("strategy_used", "unknown"),
+                                "processing_strategy": result.metadata.get("strategy_used", "unknown"),
                                 "ocr_used": result.metadata.get("ocr_used", False),
                                 "total_pages": result.metadata.get("total_pages", 0),
                                 "chunk_type": "extracted_content",
-                                "element_type": getattr(element, 'type', 'text'),
-                                "page_number": getattr(element, 'page_number', None),
+                                "element_type": getattr(element, 'category', 'text'),
+                                "page_number": self._extract_page_number_from_element(element),
                             },
                         }
                         chunks.append(chunk)
 
                     return chunks
+
                 else:
                     error_msg = result.error_message if result else "Unknown error"
                     status_text.error(f"❌ PDF processing failed: {error_msg}")
@@ -581,103 +573,31 @@ class DataUploadUI:
             st.warning("No chunks available for further processing")
             return
 
-        st.subheader("🔧 Additional Chunking Options", divider="gray")
+    def _extract_page_number_from_element(self, element) -> Optional[int]:
+        """
+        Extract page number from an unstructured element.
 
-        st.info(
-            "ℹ️ Your files have been processed. You can apply additional chunking strategies if needed."
-        )
+        Args:
+            element: Unstructured document element
 
-        # Check if we have PDF files that might benefit from semantic chunking
-        has_pdfs = "PDF" in chunks_df["file_type"].values
-
-        chunking_option = st.radio(
-            "Additional Processing:",
-            options=[
-                "No Additional Processing",
-                "Re-chunk with Semantic Splitting",
-                "Re-chunk with Simple Splitting",
-            ],
-            help="Choose additional processing strategy",
-            index=0,
-        )
-
-        if chunking_option != "No Additional Processing" and st.button(
-            "🔄 Apply Additional Processing", type="secondary"
-        ):
-            with st.spinner("Applying additional chunking..."):
-                try:
-                    if (
-                        chunking_option == "Re-chunk with Semantic Splitting"
-                        and has_pdfs
-                    ):
-                        # Apply semantic chunking for PDFs
-                        processed_chunks_df = self._apply_semantic_chunking(chunks_df)
-                    else:
-                        # Apply simple chunking
-                        processed_chunks_df = self._apply_simple_chunking(chunks_df)
-
-                    if (
-                        processed_chunks_df is not None
-                        and not processed_chunks_df.empty
-                    ):
-                        self.session_manager.set("chunks_df", processed_chunks_df)
-                        st.success(
-                            f"✅ Additional processing complete! New total: {len(processed_chunks_df)} chunks"
-                        )
-                        st.dataframe(
-                            processed_chunks_df.head(10),
-                            use_container_width=True,
-                        )
-                    else:
-                        st.warning("⚠️ No chunks created during additional processing")
-
-                except Exception as e:
-                    st.error(f"❌ Error during additional processing: {str(e)}")
-
-    def _apply_semantic_chunking(
-        self, chunks_df: pd.DataFrame
-    ) -> Optional[pd.DataFrame]:
-        """Apply semantic chunking to existing chunks."""
+        Returns:
+            Page number if available, None otherwise
+        """
         try:
-            # This would integrate with the semantic chunker from Phase 1
-            # For now, return the original chunks
-            st.info(
-                "🤖 Semantic chunking would be applied here with Phase 1 integration"
-            )
-            return chunks_df
-        except Exception as e:
-            st.error(f"Semantic chunking error: {str(e)}")
+            # Try to get page number from element metadata
+            if hasattr(element, 'metadata') and hasattr(element.metadata, 'page_number'):
+                page_num = element.metadata.page_number
+                if page_num is not None:
+                    return int(page_num)
+
+            # Fallback: check for page_number attribute directly on element
+            if hasattr(element, 'page_number'):
+                page_num = element.page_number
+                if page_num is not None:
+                    return int(page_num)
+
             return None
-
-    def _apply_simple_chunking(self, chunks_df: pd.DataFrame) -> Optional[pd.DataFrame]:
-        """Apply simple sentence-based chunking to existing chunks."""
-        try:
-            chunk_records = []
-
-            for _, row in chunks_df.iterrows():
-                chunk_text = row["chunk"]
-
-                # Split by sentences
-                sentences = re.split(r"[.!?]+", chunk_text)
-                sentences = [s.strip() for s in sentences if s.strip()]
-
-                for sentence in sentences:
-                    chunk_record = {
-                        "chunk": sentence,
-                        "source_file": row.get("source_file", "unknown"),
-                        "file_type": row.get("file_type", "unknown"),
-                        "doc_id": str(uuid.uuid4()),
-                        "metadata": {
-                            "processing_type": "simple_rechunking",
-                            "original_chunk_id": row.get("doc_id", "unknown"),
-                        },
-                    }
-                    chunk_records.append(chunk_record)
-
-            return pd.DataFrame(chunk_records) if chunk_records else None
-
-        except Exception as e:
-            st.error(f"Simple chunking error: {str(e)}")
+        except (ValueError, TypeError, AttributeError):
             return None
 
     def _handle_save_data(self) -> None:

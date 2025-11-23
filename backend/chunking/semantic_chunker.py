@@ -6,11 +6,12 @@ by using title-based segmentation with configurable parameters.
 """
 
 import logging
-import math
 from typing import Any, Dict, List, Optional
 
 from unstructured.chunking.title import chunk_by_title
 from unstructured.documents.elements import Element, Text
+
+from .chunk_result import ChunkResult, EmptyChunkResult
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -21,32 +22,6 @@ DEFAULT_CHUNK_OVERLAP = 50
 DEFAULT_MAX_CHARACTERS = 1500
 DEFAULT_COMBINE_TEXT_UNDER_N_CHARS = 1000
 DEFAULT_NEW_AFTER_N_CHARS = 3000
-
-
-class ChunkResult:
-    """Result object for chunking operations."""
-
-    def __init__(
-        self,
-        chunks: List[Element],
-        metadata: Optional[Dict[str, Any]] = None,
-        stats: Optional[Dict[str, Any]] = None,
-    ):
-        """
-        Initialize chunk result.
-
-        Args:
-            chunks: List of chunked elements
-            metadata: Additional metadata about the chunking process
-            stats: Statistics about the chunking operation
-        """
-        self.chunks = chunks
-        self.metadata = metadata or {}
-        self.stats = stats or {}
-
-    def __repr__(self) -> str:
-        """String representation of the chunk result."""
-        return f"ChunkResult(chunks={len(self.chunks)}, metadata={len(self.metadata)} keys)"
 
 
 class SemanticChunker:
@@ -124,7 +99,7 @@ class SemanticChunker:
         """
         if not elements:
             self.logger.warning("No elements provided for chunking")
-            return ChunkResult([], {"error": "No elements to chunk"})
+            return EmptyChunkResult("No elements to chunk", chunker_type="semantic")
 
         start_time = time.time() if 'time' in globals() else None
         original_count = len(elements)

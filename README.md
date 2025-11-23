@@ -5,8 +5,8 @@ A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit 
 ## Features
 
 - 🤖 **LLM Support**: OpenAI models (with planned support for Gemini and local Ollama models)
-- 📄 **Advanced Document Processing**: Support for CSV and PDF files with intelligent processing strategies
-- 🔍 **Intelligent Chunking**: Advanced chunking strategies including semantic chunking for PDFs and title-based segmentation
+- 📄 **Advanced Document Processing**: Support for CSV and PDF files with intelligent processing strategies and comprehensive metadata extraction
+- 🔍 **Intelligent Chunking**: Advanced chunking strategies including semantic chunking for PDFs with title-based segmentation and ChunkResult framework
 - 💾 **Vector Database**: Qdrant integration for efficient document retrieval with comprehensive collection management
 - 🔤 **OCR Integration**: Tesseract OCR with 125+ language support and cross-platform compatibility
 - 🌐 **Multi-language**: Support for English and Vietnamese with intelligent language detection
@@ -16,7 +16,7 @@ A Retrieval-Augmented Generation (RAG) chatbot application built with Streamlit 
 - 🗂️ **Collection Management**: Create, view, and delete vector collections through dedicated UI
 - 📊 **Data Exploration**: Browse collection data points with pagination, search, and filtering
 - 🔎 **Advanced Search**: Content-based filtering across stored documents with pagination
-- 🖼️ **Image Extraction**: Automatic image extraction from PDFs with permanent storage
+- 🖼️ **Image Extraction**: Automatic image extraction from PDFs with permanent storage to `./figures/` directory
 - ⚙️ **Multi-tier Processing**: Automatic strategy detection with fallback mechanisms for robust document processing
 
 ## Architecture
@@ -114,11 +114,11 @@ The application will open in your web browser at `http://localhost:8501`.
 
 ### PDF Processing Best Practices
 
-- **Text-based PDFs**: Use "Fast Processing" for quicker results
-- **Image-based PDFs**: Use "High Resolution" with OCR for best results
-- **Scanned Documents**: Use "OCR Processing" when text is embedded in images
-- **Large Files**: Processing may take longer for files >10MB due to OCR operations
-- **Image Storage**: Extracted images are saved to the `./figures/` directory automatically
+- **Text-based PDFs**: Use "Fast Processing" for quicker results with automatic page number extraction
+- **Image-based PDFs**: Use "High Resolution" with OCR for best results and comprehensive metadata
+- **Scanned Documents**: Use "OCR Processing" when text is embedded in images for optimal text extraction
+- **Large Files**: Processing may take longer for files >10MB due to OCR operations, but provides complete metadata
+- **Image Storage**: Extracted images are saved to the `./figures/` directory automatically with proper naming
 
 ### Supported Document Types
 
@@ -211,7 +211,8 @@ rag_chatbot/
 │   ├── document_processor.py      # Main document processing orchestrator
 │   ├── collection_management.py   # Vector collection management
 │   ├── chunking/                  # Intelligent chunking strategies
-│   │   └── semantic_chunker.py    # Semantic chunking implementation
+│   │   ├── semantic_chunker.py    # Semantic chunking implementation
+│   │   └── chunk_result.py        # Standardized chunking result framework
 │   ├── embeddings/                # Embedding strategies and factories
 │   ├── llms/                      # LLM integrations and factories
 │   ├── ocr/                       # OCR integration and configuration

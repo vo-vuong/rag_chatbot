@@ -194,6 +194,9 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             # Calculate processing time
             processing_time = time.time() - start_time
 
+            # Extract total pages from elements
+            total_pages = self._extract_total_pages(elements)
+
             # Prepare metadata
             metadata = {
                 "file_path": file_path,
@@ -203,6 +206,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 "ocr_used": self.ocr_used,
                 "ocr_available": self.ocr.is_configured,
                 "elements_extracted": len(elements),
+                "total_pages": total_pages,
                 "languages": languages,
                 **processing_info,
             }
@@ -295,6 +299,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 infer_table_structure=self.infer_table_structure,
                 languages=languages,
                 extract_images_in_pdf=self.extract_images,
+                include_page_breaks=True,
             )
 
             processing_info = {
@@ -305,6 +310,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             }
 
             self.ocr_used = False
+            self.last_processing_strategy_used = "fast"
             return elements, processing_info
 
         except Exception as e:
@@ -337,6 +343,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 infer_table_structure=self.infer_table_structure,
                 extract_images_in_pdf=self.extract_images,
                 languages=ocr_languages if ocr_enabled else None,
+                include_page_breaks=True,
             )
 
             processing_info = {
@@ -349,6 +356,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             }
 
             self.ocr_used = ocr_enabled
+            self.last_processing_strategy_used = "hi_res"
             return elements, processing_info
 
         except Exception as e:
@@ -389,6 +397,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 infer_table_structure=False,  # Disable table detection for OCR
                 extract_images_in_pdf=True,
                 languages=ocr_languages,
+                include_page_breaks=True,
                 # Use high resolution strategy to force OCR processing
                 # Modern unstructured automatically applies OCR when needed
             )
@@ -402,6 +411,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             }
 
             self.ocr_used = True
+            self.last_processing_strategy_used = "ocr_only"
             return elements, processing_info
 
         except Exception as e:
@@ -455,6 +465,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 strategy=PartitionStrategy.FAST,
                 infer_table_structure=self.infer_table_structure,
                 languages=languages,
+                include_page_breaks=True,
                 # Use pdfplumber explicitly
                 pdf_processing_mode="pdfplumber",
             )
@@ -467,6 +478,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             }
 
             self.ocr_used = False
+            self.last_processing_strategy_used = "pdfplumber_fallback"
             return elements, processing_info
 
         except Exception as e:
@@ -476,6 +488,64 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 "success": False,
                 "error": str(e),
             }
+
+    def _extract_total_pages(self, elements: List[Any]) -> int:
+        """
+        Extract total page count from processed elements.
+
+        Args:
+            elements: List of document elements from unstructured
+
+        Returns:
+            Total number of pages found in the document
+        """
+        if not elements:
+            return 0
+
+        page_numbers = set()
+        for element in elements:
+            try:
+                # Get page number from element metadata
+                if hasattr(element, 'metadata') and hasattr(
+                    element.metadata, 'page_number'
+                ):
+                    page_num = element.metadata.page_number
+                    if page_num is not None:
+                        page_numbers.add(int(page_num))
+
+                # Also check for page_number attribute directly on element
+                elif hasattr(element, 'page_number'):
+                    page_num = element.page_number
+                    if page_num is not None:
+                        page_numbers.add(int(page_num))
+            except (ValueError, TypeError, AttributeError) as e:
+                self._logger.debug(f"Could not extract page number from element: {e}")
+                continue
+
+        if page_numbers:
+            total_pages = max(page_numbers)
+            self._logger.info(
+                f"Extracted {len(page_numbers)} unique page numbers, total pages: {total_pages}"
+            )
+            return total_pages
+        else:
+            # Fallback: try to count page breaks
+            page_break_elements = [
+                elem
+                for elem in elements
+                if hasattr(elem, 'category') and elem.category == 'PageBreak'
+            ]
+            if page_break_elements:
+                total_pages = len(page_break_elements) + 1
+                self._logger.info(
+                    f"Counted {len(page_break_elements)} page breaks, total pages: {total_pages}"
+                )
+                return total_pages
+            else:
+                self._logger.warning(
+                    "Could not determine total page count from elements"
+                )
+                return 0
 
     def _is_text_based_pdf(self, file_path: str) -> bool:
         """

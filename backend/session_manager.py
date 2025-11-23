@@ -91,7 +91,6 @@ class SessionManager:
             # PDF PROCESSING CONFIGURATION
             # ============================================================
             'pdf_processing_strategy': 'auto',  # auto, ocr, fast, fallback
-            'pdf_enable_ocr': True,  # Enable OCR for PDFs
             'pdf_semantic_chunking': True,  # Use semantic chunking for PDFs
             'pdf_chunk_size': 1000,  # Chunk size for PDF semantic chunking
             'pdf_chunk_overlap': 100,  # Overlap for PDF chunks
@@ -289,14 +288,12 @@ class SessionManager:
             "pdf": {
                 "strategy": self.get("pdf_processing_strategy", "auto"),
                 "infer_table_structure": True,
-                "extract_images": self.get(
-                    "pdf_enable_ocr", True
-                ),  # Enable image extraction when OCR is enabled
+                "extract_images": True,  # Enable image extraction by default
                 "chunk_after_extraction": False,  # Handle chunking separately
             },
             "ocr": {
                 "languages": [self.get("language", "en")],
-                "enabled": self.get("pdf_enable_ocr", True),
+                "enabled": True,  # OCR is always available for strategies that need it
             },
             "chunking": {
                 "chunk_size": self.get("pdf_chunk_size", 1000),
@@ -324,10 +321,8 @@ class SessionManager:
             if "strategy" in pdf_config:
                 self.set("pdf_processing_strategy", pdf_config["strategy"])
 
-        if "ocr" in config:
-            ocr_config = config["ocr"]
-            if "enabled" in ocr_config:
-                self.set("pdf_enable_ocr", ocr_config["enabled"])
+        # OCR configuration is now handled automatically by strategies
+        # No longer need to store OCR enabled state in session
 
         if "chunking" in config:
             chunking_config = config["chunking"]

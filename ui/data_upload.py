@@ -7,20 +7,23 @@ and comprehensive progress tracking.
 
 import logging
 import os
-import re
 import tempfile
 import time
 import traceback
 import uuid
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 import pypdf
 import streamlit as st
 
+from backend.chunking.csv_grouping_chunker import CSVGroupingChunker
 from backend.session_manager import SessionManager
+from backend.strategies.csv_strategy import CSVProcessingStrategy
 from backend.vector_db.qdrant_manager import QdrantManager
 from config.constants import (
+    CSV_UI_MESSAGES,
+    DEFAULT_CSV_CONFIG,
     EN,
     ENGLISH,
     PDF_PROCESSING_STRATEGIES,
@@ -122,6 +125,10 @@ class DataUploadUI:
                 st.subheader("📄 PDF Processing Configuration", divider="gray")
                 self._render_pdf_processing_options()
 
+            if csv_files:
+                st.subheader("📊 CSV Processing Configuration", divider="gray")
+                self._render_csv_column_selection(csv_files)
+
             # Process button
             st.divider()
             if st.button("🚀 Process Files", type="primary", use_container_width=True):
@@ -155,7 +162,8 @@ class DataUploadUI:
             if file_info["type"] == "PDF":
                 if file_info["size_mb"] > PDF_SIZE_LIMIT_MB:
                     file_info["warnings"].append(
-                        f"⚠️ File too large ({file_info['size_mb']}MB > {PDF_SIZE_LIMIT_MB}MB limit)"
+                        f"⚠️ File too large ({file_info['size_mb']}MB >"
+                        f"{PDF_SIZE_LIMIT_MB}MB limit)"
                     )
                 elif file_info["size_mb"] > PDF_SIZE_WARNING_MB:
                     file_info["warnings"].append(
@@ -190,26 +198,22 @@ class DataUploadUI:
                 f"{file_type_icon} {file_info['name']} ({file_info['size_mb']} MB)",
                 expanded=True,
             ):
-                col1, col2 = st.columns([2, 1])
+                st.write(f"**Type:** {file_info['type']}")
+                st.write(f"**Size:** {file_info['size_mb']} MB")
 
-                with col1:
-                    st.write(f"**Type:** {file_info['type']}")
-                    st.write(f"**Size:** {file_info['size_mb']} MB")
+                # File type specific information
+                if file_info["type"] == "PDF":
+                    st.info(
+                        "🤖 This PDF will be processed with OCR and semantic chunking"
+                    )
+                else:
+                    st.info("📊 This CSV will be processed with standard chunking")
 
-                    # File type specific information
-                    if file_info["type"] == "PDF":
-                        st.info(
-                            "🤖 This PDF will be processed with OCR and semantic chunking"
-                        )
-                    else:
-                        st.info("📊 This CSV will be processed with standard chunking")
-
-                with col2:
-                    if file_info["warnings"]:
-                        for warning in file_info["warnings"]:
-                            st.warning(warning)
-                    else:
-                        st.success("✅ Ready to process")
+                if file_info["warnings"]:
+                    for warning in file_info["warnings"]:
+                        st.warning(warning)
+                else:
+                    st.success("✅ Ready to process")
 
     def _render_pdf_processing_options(self) -> None:
         """Render PDF processing configuration options."""
@@ -276,6 +280,201 @@ class DataUploadUI:
             f"**{PDF_PROCESSING_STRATEGIES[strategy_choice]}**: {strategy_info[strategy_choice]}"
         )
 
+    def _render_csv_column_selection(self, csv_files: List) -> Dict[str, Any]:
+        """
+        Render column selection interface for CSV files.
+
+        Args:
+            csv_files: List of uploaded CSV files
+
+        Returns:
+            Dictionary containing CSV configuration for each file
+        """
+        csv_configs = {}
+
+        # Help message
+        st.info(CSV_UI_MESSAGES["upload_help"])
+
+        # Process each CSV file
+        for csv_file in csv_files:
+            with st.expander(f"⚙️ Configure {csv_file.name}", expanded=True):
+                try:
+                    # Analyze CSV structure - reset file pointer first
+                    csv_file.seek(0)  # Reset file pointer to beginning
+                    df_sample = pd.read_csv(csv_file, nrows=100)
+
+                    # Display basic info
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("📏 Rows", len(df_sample))
+                    with col2:
+                        st.metric("📊 Columns", len(df_sample.columns))
+                    with col3:
+                        file_size_mb = round(csv_file.size / (1024 * 1024), 2)
+                        st.metric("💾 Size", f"{file_size_mb} MB")
+
+                    # Preview CSV structure - using tabs instead of nested expander
+                    preview_tab, column_info_tab = st.tabs(
+                        ["📋 Data Preview", "📊 Column Information"]
+                    )
+
+                    with preview_tab:
+                        st.dataframe(df_sample.head(), use_container_width=True)
+
+                    with column_info_tab:
+                        # Column information
+                        column_info = []
+                        for col in df_sample.columns:
+                            null_count = df_sample[col].isnull().sum()
+                            unique_count = df_sample[col].nunique()
+                            sample_values = df_sample[col].dropna().head(2).tolist()
+
+                            column_info.append(
+                                {
+                                    'Column': col,
+                                    'Type': str(df_sample[col].dtype),
+                                    'Unique Values': unique_count,
+                                    'Null Count': null_count,
+                                    'Sample Values': ', '.join(
+                                        str(v) for v in sample_values
+                                    ),
+                                }
+                            )
+
+                        col_info_df = pd.DataFrame(column_info)
+                        st.dataframe(col_info_df, use_container_width=True)
+
+                    # Column selection
+                    selected_columns = st.multiselect(
+                        "🏷️ Select Grouping Columns",
+                        options=list(df_sample.columns),
+                        help=CSV_UI_MESSAGES["column_selection_help"],
+                        format_func=lambda x: f"📊 {x} ({df_sample[x].dtype})",
+                    )
+
+                    # Configuration options
+                    col1, col2 = st.columns(2)
+
+                    with col1:
+                        max_rows_per_chunk = st.slider(
+                            "📏 Maximum Rows per Chunk",
+                            min_value=1,
+                            max_value=50,
+                            value=DEFAULT_CSV_CONFIG["max_rows_per_chunk"],
+                            help="Limit the number of rows per chunk to prevent overly "
+                            "large chunks",
+                        )
+
+                    with col2:
+                        include_headers = st.checkbox(
+                            "📋 Include Column Headers",
+                            value=DEFAULT_CSV_CONFIG["include_headers"],
+                            help="Add column headers to each chunk for better context",
+                        )
+
+                    # Preview configuration using tabs instead of nested expander
+                    if selected_columns:
+                        # Create a preview section without nested expanders
+                        st.markdown("### 👁️ Chunk Preview")
+                        self._render_csv_chunk_preview(
+                            df_sample,
+                            {
+                                "selected_columns": selected_columns,
+                                "max_rows_per_chunk": max_rows_per_chunk,
+                                "include_headers": include_headers,
+                                "csv_file_name": csv_file.name,  # Add file name for unique keys
+                            },
+                        )
+
+                    # Store configuration
+                    csv_configs[csv_file.name] = {
+                        "selected_columns": selected_columns,
+                        "max_rows_per_chunk": max_rows_per_chunk,
+                        "include_headers": include_headers,
+                        "file_size_mb": file_size_mb,
+                        "total_columns": len(df_sample.columns),
+                        "sample_rows": len(df_sample),
+                    }
+
+                except Exception as e:
+                    st.error(f"❌ Error analyzing {csv_file.name}: {str(e)}")
+                    # Fallback configuration
+                    csv_configs[csv_file.name] = {
+                        "selected_columns": [],
+                        "max_rows_per_chunk": DEFAULT_CSV_CONFIG["max_rows_per_chunk"],
+                        "include_headers": DEFAULT_CSV_CONFIG["include_headers"],
+                        "error": str(e),
+                    }
+
+        # Store configurations in session state
+        st.session_state.csv_processing_configs = csv_configs
+        return csv_configs
+
+    def _render_csv_chunk_preview(
+        self, df: pd.DataFrame, config: Dict[str, Any]
+    ) -> None:
+        """
+        Render preview of chunks based on column selection.
+
+        Args:
+            df: Sample DataFrame
+            config: Chunking configuration
+        """
+        selected_columns = config.get("selected_columns", [])
+        max_rows_per_chunk = config.get("max_rows_per_chunk", 10)
+        csv_file_name = config.get("csv_file_name", "preview")
+
+        if not selected_columns:
+            st.info("Select columns to see chunk preview")
+            return
+
+        try:
+            # Create chunker and generate sample chunks
+            chunker = CSVGroupingChunker()
+            sample_chunks = chunker.chunk_dataframe(
+                df.head(20),  # Limit preview to first 20 rows
+                group_columns=selected_columns,
+                max_rows_per_chunk=max_rows_per_chunk,
+            )
+
+            if not sample_chunks:
+                st.warning("No chunks could be generated with current selection")
+                return
+
+            # Display preview chunks using columns instead of nested expanders
+            st.write(f"**Preview: {len(sample_chunks)} chunk(s) will be created**")
+
+            # Create tabs for each chunk to avoid nesting
+            if sample_chunks:
+                chunk_tabs = st.tabs(
+                    [f"Chunk {i+1}" for i in range(min(3, len(sample_chunks)))]
+                )
+
+                for i, (chunk, tab) in enumerate(zip(sample_chunks[:3], chunk_tabs)):
+                    with tab:
+                        chunk_size = len(chunk.get("chunk", ""))
+                        row_count = chunk.get("row_count", 0)
+
+                        st.write(
+                            f"**Rows:** {row_count} | **Characters:** {chunk_size}"
+                        )
+
+                        st.text_area(
+                            f"Chunk {i+1} Content:",
+                            chunk.get("chunk", ""),
+                            height=150,
+                            disabled=True,
+                            key=f"chunk_content_{i}_{csv_file_name}",
+                        )
+
+                        # Show metadata as collapsible section using st.accordion
+                        if chunk.get("metadata"):
+                            st.write("**Metadata:**")
+                            st.json(chunk["metadata"])
+
+        except Exception as e:
+            st.error(f"Error generating preview: {str(e)}")
+
     def _process_uploaded_files(self, uploaded_files: List) -> None:
         """
         Process uploaded files with enhanced PDF support and progress tracking.
@@ -316,7 +515,9 @@ class DataUploadUI:
 
                 try:
                     if file_extension == "csv":
-                        chunks = self._process_csv_file(uploaded_file, details_text)
+                        chunks = self._process_csv_file_enhanced(
+                            uploaded_file, details_text
+                        )
                         if chunks:
                             all_chunks.extend(chunks)
                             processing_stats["processed_files"] += 1
@@ -372,6 +573,8 @@ class DataUploadUI:
         """Process a single CSV file."""
         status_text.info("📊 Reading CSV file...")
 
+        # Reset file pointer to ensure we read from the beginning
+        uploaded_file.seek(0)
         df = pd.read_csv(uploaded_file)
         chunks = []
 
@@ -396,6 +599,119 @@ class DataUploadUI:
             chunks.append(chunk)
 
         return chunks
+
+    def _process_csv_file_enhanced(self, uploaded_file, status_text) -> List[Dict]:
+        """
+        Process a single CSV file with enhanced column-based chunking.
+
+        Args:
+            uploaded_file: Uploaded CSV file object
+            status_text: Streamlit status text element for updates
+
+        Returns:
+            List of chunk dictionaries
+        """
+        try:
+            status_text.info("🔧 Initializing enhanced CSV processor...")
+
+            # Get CSV configuration from session state
+            csv_configs = getattr(st.session_state, 'csv_processing_configs', {})
+            csv_config = csv_configs.get(uploaded_file.name, {})
+
+            # Use configuration from UI or defaults
+            selected_columns = csv_config.get("selected_columns", [])
+            max_rows_per_chunk = csv_config.get(
+                "max_rows_per_chunk", DEFAULT_CSV_CONFIG["max_rows_per_chunk"]
+            )
+            include_headers = csv_config.get(
+                "include_headers", DEFAULT_CSV_CONFIG["include_headers"]
+            )
+
+            # Create temporary file for processing
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
+                # Reset file pointer before reading
+                uploaded_file.seek(0)
+                temp_file.write(uploaded_file.read())
+                temp_file_path = temp_file.name
+
+            try:
+                strategy_config = {
+                    "max_rows_per_chunk": max_rows_per_chunk,
+                    "include_headers": include_headers,
+                    "encoding": "utf-8",
+                    "delimiter": ",",
+                }
+
+                strategy = CSVProcessingStrategy(config=strategy_config)
+
+                status_text.info(
+                    f"📊 Processing CSV with column grouping:"
+                    f"{selected_columns if selected_columns else 'Row by row'}"
+                )
+
+                # Process CSV with strategy
+                processing_result = strategy.extract_elements(
+                    temp_file_path,
+                    selected_columns=selected_columns,
+                    max_rows_per_chunk=max_rows_per_chunk,
+                    include_headers=include_headers,
+                )
+
+                if not processing_result.success:
+                    status_text.error(
+                        f"❌ CSV processing failed: {processing_result.error_message}"
+                    )
+                    return []
+
+                # Convert processing result elements to chunk format
+                chunks = []
+                for element in processing_result.elements:
+                    chunk = {
+                        "chunk": element.get("text", ""),
+                        "source_file": uploaded_file.name,
+                        "file_type": "CSV",
+                        "doc_id": element.get("metadata", {}).get(
+                            "doc_id", str(uuid.uuid4())
+                        ),
+                        "metadata": {
+                            **element.get("metadata", {}),
+                            "processing_strategy": "enhanced_csv",
+                            "selected_columns": selected_columns,
+                            "max_rows_per_chunk": max_rows_per_chunk,
+                            "include_headers": include_headers,
+                        },
+                    }
+                    chunks.append(chunk)
+
+                # Log processing statistics
+                metadata = processing_result.metadata
+                status_text.success(
+                    f"✅ Enhanced CSV processing complete: {len(chunks)} chunks"
+                    f"from {metadata.get('total_rows', 0)} rows"
+                )
+
+                return chunks
+
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+
+        except Exception as e:
+            status_text.error(
+                f"❌ Enhanced CSV processing failed, trying fallback: {str(e)}"
+            )
+            logger.error(f"Enhanced CSV processing failed: {e}")
+
+            # Fallback to original CSV processing
+            try:
+                status_text.info("🔄 Using fallback CSV processing...")
+                return self._process_csv_file(uploaded_file, status_text)
+            except Exception as fallback_error:
+                status_text.error(
+                    f"❌ Fallback CSV processing also failed: {str(fallback_error)}"
+                )
+                return []
 
     def _process_pdf_file(self, uploaded_file, status_text) -> List[Dict]:
         """Process a single PDF file using the session-managed document processor."""
@@ -438,12 +754,16 @@ class DataUploadUI:
                             "chunk_index": i,
                             "doc_id": str(uuid.uuid4()),
                             "metadata": {
-                                "processing_strategy": result.metadata.get("strategy_used", "unknown"),
+                                "processing_strategy": result.metadata.get(
+                                    "strategy_used", "unknown"
+                                ),
                                 "ocr_used": result.metadata.get("ocr_used", False),
                                 "total_pages": result.metadata.get("total_pages", 0),
                                 "chunk_type": "extracted_content",
                                 "element_type": getattr(element, 'category', 'text'),
-                                "page_number": self._extract_page_number_from_element(element),
+                                "page_number": self._extract_page_number_from_element(
+                                    element
+                                ),
                             },
                         }
                         chunks.append(chunk)
@@ -585,7 +905,9 @@ class DataUploadUI:
         """
         try:
             # Try to get page number from element metadata
-            if hasattr(element, 'metadata') and hasattr(element.metadata, 'page_number'):
+            if hasattr(element, 'metadata') and hasattr(
+                element.metadata, 'page_number'
+            ):
                 page_num = element.metadata.page_number
                 if page_num is not None:
                     return int(page_num)
@@ -778,7 +1100,8 @@ class DataUploadUI:
             files_info = self.session_manager.get("uploaded_files_info", [])
             if files_info:
                 st.info(
-                    f"📊 Successfully processed and saved content from {len(files_info)} uploaded files"
+                    f"📊 Successfully processed and saved content from "
+                    f"{len(files_info)} uploaded files"
                 )
 
         except Exception as e:

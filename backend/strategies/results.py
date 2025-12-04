@@ -99,7 +99,12 @@ class ProcessingResult:
         """Check if processing failed."""
         return self.status == ProcessingStatus.FAILED
 
-    def add_error(self, message: str, error_type: str = None, details: Dict = None):
+    def add_error(
+        self,
+        message: str,
+        error_type: Optional[str] = None,
+        details: Optional[Dict] = None,
+    ):
         """Add error information to the result."""
         self.error_message = message
         self.error_type = error_type or type(self).__name__

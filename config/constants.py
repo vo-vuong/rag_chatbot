@@ -132,6 +132,31 @@ PAGE_UPLOAD = "upload"
 PAGE_DATA_MANAGEMENT = "data_management"
 
 # ============================================================
+# CSV PROCESSING
+# ============================================================
+
+DEFAULT_CSV_CONFIG = {
+    "max_rows_per_chunk": 10,
+    "max_chunk_size": 2000,
+    "include_headers": True,
+    "null_value_handling": "skip",
+    "encoding": "utf-8",
+    "delimiter": ",",
+}
+
+# CSV UI Messages
+CSV_UI_MESSAGES = {
+    "upload_help": "Upload CSV files to process with column-based chunking. Select "
+    "grouping columns to combine related rows into meaningful chunks.",
+    "column_selection_help": "Choose columns to group related rows. Rows with the same "
+    "values in selected columns will be combined into chunks.",
+    "preview_help": "Preview how your data will be chunked based on your column selection.",
+    "processing_success": "✅ CSV file processed successfully with {chunk_count} chunks",
+    "processing_error": "❌ Error processing CSV file: {error}",
+    "large_file_warning": "⚠️ Large CSV file detected. Processing may take some time.",
+}
+
+# ============================================================
 # API KEYS
 # ============================================================
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')

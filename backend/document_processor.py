@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 from .chunking.semantic_chunker import SemanticChunker
 from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
 from .strategies import PDFProcessingStrategy
+from .strategies.csv_strategy import CSVProcessingStrategy
 from .strategies.interfaces import DocumentProcessingStrategy
 from .strategies.results import ProcessingResult
 
@@ -20,7 +21,7 @@ from .strategies.results import ProcessingResult
 logger = logging.getLogger(__name__)
 
 # Supported file types and their corresponding strategies
-SUPPORTED_FILE_TYPES = {
+SUPPORTED_FILE_TYPES: Dict[str, type[DocumentProcessingStrategy]] = {
     ".pdf": PDFProcessingStrategy,
 }
 
@@ -110,6 +111,20 @@ class DocumentProcessor:
 
             self.strategies[".pdf"] = pdf_strategy
             self.logger.info("PDF processing strategy initialized")
+
+            # Initialize CSV strategy - use local import
+            try:
+                csv_config = self.config.get("csv", {})
+                self.strategies[".csv"] = CSVProcessingStrategy(config=csv_config)
+
+                # Add CSV to supported file types globally
+                SUPPORTED_FILE_TYPES[".csv"] = CSVProcessingStrategy
+
+                self.logger.info("CSV processing strategy initialized")
+            except ImportError as e:
+                self.logger.warning(f"CSV processing strategy not available: {e}")
+            except Exception as e:
+                self.logger.error(f"Failed to initialize CSV strategy: {e}")
 
         except Exception as e:
             self.logger.error(f"Failed to initialize processing strategies: {e}")

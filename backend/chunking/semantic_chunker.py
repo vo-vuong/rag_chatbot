@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 from unstructured.chunking.title import chunk_by_title
 from unstructured.documents.elements import Element, Text
 
-from .chunk_result import ChunkResult, EmptyChunkResult
+from backend.chunking import ChunkResult, EmptyChunkResult
 
 # Configure logging
 logger = logging.getLogger(__name__)

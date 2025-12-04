@@ -39,7 +39,7 @@ except ImportError as e:
 
 
 def get_strategy_for_file(
-    file_path: str, config: Dict = None
+    file_path: str, config: Optional[Dict] = None
 ) -> Optional[DocumentProcessingStrategy]:
     """Get appropriate strategy for a given file."""
 

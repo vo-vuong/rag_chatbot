@@ -27,8 +27,8 @@ git clone <repository-url>
 cd rag_chatbot
 
 # 2. Create conda environment
-conda create -n rag-chatbot python=3.9 -y
-conda activate rag-chatbot
+conda create -n rag_chatbot python=3.9 -y
+conda activate rag_chatbot
 
 # 3. Install dependencies
 pip install -r requirements.txt
@@ -70,7 +70,7 @@ Visit `http://localhost:8501` to access the application.
 ### CSV Processing Features
 - **Column-based Grouping**: Intelligent chunking by selected columns
 - **Memory Optimization**: Streaming processing for large CSV files
-- **Enhanced UI**: Tab-based interface (replaced nested expanders)
+- **Enhanced UI**: Tab-based interface
 - **File Pointer Management**: Robust file handling with seek(0) operations
 - **Performance Monitoring**: Real-time processing statistics and benchmarking
 
@@ -151,16 +151,57 @@ docker-compose restart qdrant
 ### Project Structure
 ```
 rag_chatbot/
-├── app.py                    # Main Streamlit app
-├── backend/                  # Core business logic
-│   ├── session_manager.py     # State management
-│   ├── document_processor.py  # Document processing
-│   ├── chunking/            # Chunking strategies
-│   ├── llms/                # LLM integrations
-│   ├── embeddings/          # Vector embeddings
-│   ├── ocr/                 # OCR services
-│   └── vector_db/           # Qdrant integration
-├── ui/                       # UI components
-├── config/                    # Configuration
-└── docs/                      # Documentation
+├── app.py                           # Main Streamlit application
+├── backend/                         # Core business logic
+│   ├── session_manager.py           # Session state management
+│   ├── document_processor.py        # Document processing orchestrator
+│   ├── collection_management.py     # Vector database collection management
+│   ├── chunking/                    # Document chunking strategies
+│   │   ├── semantic_chunker.py      # Semantic text chunking
+│   │   ├── csv_grouping_chunker.py  # CSV-specific chunking
+│   │   └── chunk_result.py          # Chunking result data structures
+│   ├── embeddings/                  # Vector embedding strategies
+│   │   ├── embedding_strategy.py    # Embedding abstraction layer
+│   │   ├── embedding_factory.py     # Embedding provider factory
+│   │   ├── openai_embeddings.py     # OpenAI embedding implementation
+│   │   └── local_embeddings.py      # Local model embeddings (planned)
+│   ├── llms/                        # Large Language Model integrations
+│   │   ├── llm_strategy.py          # LLM abstraction
+│   │   ├── llm_factory.py           # LLM provider factory
+│   │   ├── openai_llm.py            # OpenAI LLM implementation
+│   │   ├── online_llm.py            # Online LLM management
+│   │   ├── gemini_llm.py            # Google Gemini integration (planned)
+│   │   ├── local_llm.py             # Local LLM support
+│   │   └── ollama_manager.py        # Ollama integration
+│   ├── ocr/                         # Optical Character Recognition
+│   │   └── tesseract_ocr.py         # Tesseract OCR implementation
+│   ├── strategies/                  # Document processing strategies
+│   │   ├── interfaces.py            # Strategy interface definitions
+│   │   ├── pdf_strategy.py          # PDF processing strategy
+│   │   ├── csv_strategy.py          # CSV processing strategy
+│   │   └── results.py               # Processing result structures
+│   ├── prompts/                     # Prompt management system
+│   │   ├── prompt_manager.py        # Prompt template manager
+│   │   ├── prompt_template.py       # Template definition
+│   │   └── prompt_builder.py        # Dynamic prompt construction
+│   ├── utils/                       # Utility functions
+│   │   └── csv_optimizer.py         # CSV processing optimizations
+│   ├── errors/                      # Error handling
+│   │   └── csv_errors.py            # CSV-specific error types
+│   └── vector_db/                   # Vector database integration
+│       └── qdrant_manager.py        # Qdrant client wrapper
+├── ui/                              # Streamlit UI components
+│   ├── chat_main.py                 # Main chat interface
+│   ├── data_upload.py               # Document upload and processing UI
+│   ├── data_management.py           # Collection management UI
+│   ├── sidebar_navigation.py        # Navigation and configuration sidebar
+│   ├── components.py                # Reusable UI components
+│   └── llm_setup.py                 # LLM configuration interface
+├── config/                          # Configuration management
+│   └── constants.py                 # Application constants and defaults
+├── docs/                            # Documentation
+├── requirements.txt                 # Python dependencies
+├── docker-compose.yml              # Qdrant container configuration
+├── .env.example                     # Environment variables template
+└── .gitignore                       # Git ignore patterns
 ```

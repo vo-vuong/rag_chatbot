@@ -7,7 +7,9 @@ system, OCR integration, and semantic chunking support.
 
 import logging
 import os
+import shutil
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import pikepdf
@@ -16,6 +18,7 @@ from unstructured.partition.utils.constants import PartitionStrategy
 
 from ..chunking.semantic_chunker import SemanticChunker
 from ..ocr.tesseract_ocr import get_tesseract_ocr
+from ..utils.image_storage import ImageStorageUtility
 from .interfaces import DocumentProcessingStrategy
 from .results import ProcessingResult
 
@@ -35,6 +38,7 @@ PDF_PROCESSING_STRATEGIES = {
 DEFAULT_PDF_STRATEGY = "auto"
 DEFAULT_INFER_TABLE_STRUCTURE = True
 DEFAULT_EXTRACT_IMAGES = True
+DEFAULT_IMAGE_STORAGE_PATH = "extracted_images"
 
 
 class PDFProcessingStrategy(DocumentProcessingStrategy):
@@ -79,6 +83,16 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self.extract_images = self.config.get("extract_images", DEFAULT_EXTRACT_IMAGES)
         self.chunk_after_extraction = self.config.get("chunk_after_extraction", True)
 
+        # Initialize image storage
+        image_storage_path = self.config.get(
+            "image_storage_path", DEFAULT_IMAGE_STORAGE_PATH
+        )
+        self.image_storage = ImageStorageUtility(
+            base_storage_path=image_storage_path,
+            enable_optimization=True,
+            create_subdirs=True,
+        )
+
         # Processing state
         self.last_processing_strategy_used = None
         self.ocr_used = False
@@ -86,6 +100,214 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self._logger.info(
             f"PDF processing strategy initialized with OCR available: {self.ocr.is_configured}"
         )
+
+    def _get_document_name(self, filename: str) -> str:
+        """
+        Extract document name without extension for folder naming.
+
+        Args:
+            filename: Original filename or file path
+
+        Returns:
+            Document name suitable for folder creation
+        """
+        # Extract filename from path if needed
+        filename = Path(filename).name
+        # Remove extension
+        document_name = Path(filename).stem
+        # Sanitize document name (remove problematic characters)
+        document_name = "".join(
+            c for c in document_name if c.isalnum() or c in (' ', '-', '_')
+        )
+        # Limit length to avoid filesystem issues
+        return document_name[:100] or "unnamed_document"
+
+    def _cleanup_figures_folder(self, base_path: Optional[str] = None) -> None:
+        """
+        Clean up the figures folder created by unstructured library.
+
+        The unstructured library automatically creates a 'figures' folder when
+        extract_images_in_pdf=True. Since we store images in our own organized
+        structure, we clean up the redundant figures folder.
+
+        Args:
+            base_path: Base path where figures folder might be created.
+                      Defaults to current working directory.
+        """
+        if not base_path:
+            base_path = os.getcwd()
+
+        figures_path = Path(base_path) / "figures"
+
+        try:
+            if figures_path.exists() and figures_path.is_dir():
+                # Check if it contains image files
+                image_files = []
+                for ext in ['*.png', '*.jpg', '*.jpeg', '*.gif', '*.bmp', '*.tiff']:
+                    image_files.extend(figures_path.glob(ext))
+                    image_files.extend(figures_path.glob(ext.upper()))
+
+                if image_files:
+                    self._logger.info(
+                        f"Cleaning up unstructured figures folder: {figures_path}"
+                    )
+                    shutil.rmtree(figures_path)
+                    self._logger.info(
+                        f"Removed {len(image_files)} image files from figures folder"
+                    )
+                else:
+                    self._logger.debug(
+                        f"Figures folder {figures_path} is empty or doesn't contain images"
+                    )
+            else:
+                self._logger.debug(f"Figures folder {figures_path} does not exist")
+
+        except Exception as e:
+            self._logger.warning(
+                f"Failed to clean up figures folder {figures_path}: {e}"
+            )
+
+    def _process_extracted_images(
+        self, elements: List[Any], document_name: str
+    ) -> Dict[str, Any]:
+        """
+        Process and store images extracted from PDF elements.
+
+        Args:
+            elements: List of elements from unstructured processing
+            document_name: Name of the document for organizing images
+
+        Returns:
+            Dictionary with image processing statistics and metadata
+        """
+        import base64
+        import io
+
+        image_stats = {
+            "total_images": 0,
+            "stored_images": 0,
+            "failed_images": 0,
+            "image_paths": [],
+            "document_name": document_name,
+            "processing_errors": [],
+        }
+
+        if not self.extract_images or not elements:
+            return image_stats
+
+        # Create document-specific storage directory
+        doc_image_path = Path(self.image_storage.base_path) / document_name
+
+        # Create a document-specific image storage instance
+        doc_image_storage = ImageStorageUtility(
+            base_storage_path=str(doc_image_path),
+            enable_optimization=self.image_storage.enable_optimization,
+            create_subdirs=False,  # Don't create date subdirs for document-specific storage
+        )
+
+        self._logger.info(
+            f"Processing extracted images for document: {document_name} -> {doc_image_path}"
+        )
+
+        for idx, element in enumerate(elements):
+            try:
+                # Check if element is an image type
+                if hasattr(element, 'category') and element.category == 'Image':
+                    image_stats["total_images"] += 1
+
+                    # Get image metadata
+                    element_metadata = getattr(element, 'metadata', None)
+                    if not element_metadata:
+                        self._logger.warning(f"Image element {idx} has no metadata")
+                        continue
+
+                    image_bytes = None
+                    image_source = ""
+
+                    # Try to get image data from file path first (unstructured approach)
+                    image_path = getattr(element_metadata, 'image_path', None)
+                    if image_path and Path(image_path).exists():
+                        try:
+                            with open(image_path, 'rb') as f:
+                                image_bytes = f.read()
+                            image_source = f"file: {image_path}"
+                            self._logger.info(f"Loading image from file: {image_path}")
+                        except Exception as e:
+                            self._logger.warning(
+                                f"Failed to read image file {image_path}: {e}"
+                            )
+
+                    # Fallback to Base64 if available
+                    if not image_bytes:
+                        image_base64 = getattr(element_metadata, 'image_base64', None)
+                        if image_base64:
+                            try:
+                                image_bytes = base64.b64decode(image_base64)
+                                image_source = "base64 data"
+                                self._logger.info(f"Loading image from base64 data")
+                            except Exception as e:
+                                error_msg = (
+                                    f"Failed to decode base64 for image {idx}: {str(e)}"
+                                )
+                                self._logger.error(error_msg)
+                                image_stats["processing_errors"].append(error_msg)
+                                image_stats["failed_images"] += 1
+                                continue
+
+                    # If no image data found, skip
+                    if not image_bytes:
+                        self._logger.warning(
+                            f"Image element {idx} has no accessible image data"
+                        )
+                        continue
+
+                    # Get additional metadata
+                    page_number = getattr(element_metadata, 'page_number', idx + 1)
+                    bbox = getattr(element_metadata, 'coordinates', None)
+                    original_filename = getattr(
+                        element_metadata, 'filename', f"image_{idx}"
+                    )
+
+                    # Store the image using document-specific ImageStorage utility
+                    try:
+                        # Store image in document-specific folder
+                        storage_path, metadata = doc_image_storage.store_image(
+                            image_data=image_bytes,
+                            original_filename=f"page_{page_number}_{original_filename}",
+                            page_number=page_number,
+                            bbox=bbox,
+                            target_format='PNG',
+                        )
+
+                        # Update element metadata with stored image path
+                        element_metadata.image_path = str(storage_path)
+                        element_metadata.storage_metadata = metadata
+
+                        # Track successful storage
+                        image_stats["stored_images"] += 1
+                        image_stats["image_paths"].append(str(storage_path))
+
+                        self._logger.info(f"Stored image {idx}: {storage_path}")
+
+                    except Exception as e:
+                        error_msg = f"Failed to store image {idx}: {str(e)}"
+                        self._logger.error(error_msg)
+                        image_stats["processing_errors"].append(error_msg)
+                        image_stats["failed_images"] += 1
+
+            except Exception as e:
+                error_msg = f"Unexpected error processing element {idx}: {str(e)}"
+                self._logger.error(error_msg)
+                image_stats["processing_errors"].append(error_msg)
+
+        # Log processing summary
+        self._logger.info(
+            f"Image processing completed for {document_name}: "
+            f"{image_stats['stored_images']}/{image_stats['total_images']} images stored "
+            f"in {doc_image_path}"
+        )
+
+        return image_stats
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -185,9 +407,26 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             if original_filename and elements:
                 self._override_element_metadata(elements, original_filename)
 
+            # Process extracted images if enabled
+            image_stats = {}
+            if self.extract_images and elements:
+                # Get document name for organizing images
+                doc_name = self._get_document_name(original_filename or file_path)
+
+                # Process and store images
+                image_stats = self._process_extracted_images(elements, doc_name)
+
+                # Add image statistics to processing info
+                processing_info["image_extraction"] = image_stats
+                image_paths = image_stats.get("image_paths", [])
+            else:
+                image_paths = []
+
             # Apply semantic chunking if requested
             if self.chunk_after_extraction and elements:
-                chunk_result = self.chunker.chunk_elements(elements, languages)
+                chunk_result = self.chunker.chunk_elements(
+                    elements, languages, image_paths=image_paths
+                )
                 elements = chunk_result.chunks
                 processing_info["chunking_stats"] = chunk_result.stats
 
@@ -208,6 +447,12 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 "elements_extracted": len(elements),
                 "total_pages": total_pages,
                 "languages": languages,
+                "extracted_images": image_stats.get("total_images", 0),
+                "stored_images": image_stats.get("stored_images", 0),
+                "failed_images": image_stats.get("failed_images", 0),
+                "image_paths": image_stats.get("image_paths", []),
+                "document_name": image_stats.get("document_name", ""),
+                "image_extraction_enabled": self.extract_images,
                 **processing_info,
             }
 
@@ -215,6 +460,10 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 f"PDF processing completed in {processing_time:.2f}s: "
                 f"{len(elements)} elements extracted using {self.last_processing_strategy_used}"
             )
+
+            # Clean up the figures folder created by unstructured
+            if self.extract_images:
+                self._cleanup_figures_folder()
 
             return ProcessingResult(
                 success=True,
@@ -226,6 +475,10 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         except Exception as e:
             error_msg = f"PDF processing failed: {str(e)}"
             self._logger.error(error_msg, exc_info=True)
+
+            # Clean up the figures folder even if processing failed
+            if self.extract_images:
+                self._cleanup_figures_folder()
 
             return ProcessingResult(
                 success=False,

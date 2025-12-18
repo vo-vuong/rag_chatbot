@@ -181,10 +181,22 @@ class QdrantManager:
                 for col in chunks_df.columns:
                     if col not in payload and col != "chunk":
                         value = row[col]
-                        if pd.isna(value):
-                            payload[col] = None
-                        elif isinstance(value, (int, float, str, bool)):
+                        # Handle NaN values - use try/except for array ambiguity
+                        try:
+                            if pd.isna(value):
+                                payload[col] = None
+                                continue
+                        except (ValueError, TypeError):
+                            # Handle cases where pd.isna() can't evaluate the value (e.g., numpy arrays)
+                            if value is None:
+                                payload[col] = None
+                                continue
+
+                        if isinstance(value, (int, float, str, bool)):
                             payload[col] = value
+                        elif isinstance(value, list):
+                            # Handle lists like image_paths
+                            payload[col] = value if value else []
                         else:
                             payload[col] = str(value)
 

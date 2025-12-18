@@ -150,3 +150,5 @@ testing_datas/*
 CLAUDE.MD
 .mcp.json
 plans/
+extracted_images/
+repomix-output.xml

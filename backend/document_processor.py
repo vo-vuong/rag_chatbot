@@ -30,8 +30,9 @@ DEFAULT_CONFIG = {
     "pdf": {
         "strategy": "auto",  # auto, fast, hi_res, ocr_only, fallback
         "infer_table_structure": True,
-        "extract_images": False,
+        "extract_images": True,
         "chunk_after_extraction": True,
+        "image_storage_path": "extracted_images",  # Path for storing extracted images
     },
     "ocr": {
         "languages": ["en", "vi"],  # Default OCR languages

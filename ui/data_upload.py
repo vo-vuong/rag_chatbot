@@ -747,12 +747,44 @@ class DataUploadUI:
                     # Convert processing result to chunks
                     chunks = []
                     for i, element in enumerate(result.elements):
+                        # Get image paths for this chunk from multiple sources
+                        chunk_image_paths = []
+
+                        # Check 1: Look for image_paths in result metadata (from PDF processing)
+                        if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+                            result_image_paths = result.metadata.get('image_paths', [])
+                            if result_image_paths:
+                                chunk_image_paths.extend(result_image_paths)
+
+                        # Check 2: Look for image_paths in element metadata
+                        if hasattr(element, 'metadata'):
+                            if hasattr(element.metadata, 'image_paths'):
+                                chunk_image_paths.extend(element.metadata.image_paths)
+                            elif isinstance(element.metadata, dict):
+                                element_image_paths = element.metadata.get('image_paths', [])
+                                if element_image_paths:
+                                    chunk_image_paths.extend(element_image_paths)
+
+                            # Check 3: Look for individual image_path in metadata
+                            if hasattr(element.metadata, 'image_path'):
+                                if element.metadata.image_path:
+                                    chunk_image_paths.append(element.metadata.image_path)
+                            elif isinstance(element.metadata, dict):
+                                element_image_path = element.metadata.get('image_path')
+                                if element_image_path:
+                                    chunk_image_paths.append(element_image_path)
+
+                        # Remove duplicates and ensure valid paths
+                        chunk_image_paths = list(set(chunk_image_paths))
+                        chunk_image_paths = [path for path in chunk_image_paths if path]
+
                         chunk = {
                             "chunk": element.text,
                             "source_file": uploaded_file.name,
                             "file_type": "PDF",
                             "chunk_index": i,
                             "doc_id": str(uuid.uuid4()),
+                            "image_paths": chunk_image_paths,  # Store image paths at chunk level
                             "metadata": {
                                 "processing_strategy": result.metadata.get(
                                     "strategy_used", "unknown"

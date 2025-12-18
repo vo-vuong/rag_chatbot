@@ -24,6 +24,7 @@ class ChunkResult:
         chunks: List[Any],
         metadata: Optional[Dict[str, Any]] = None,
         stats: Optional[Dict[str, Any]] = None,
+        image_paths: Optional[List[str]] = None,
     ):
         """
         Initialize chunk result.
@@ -32,10 +33,12 @@ class ChunkResult:
             chunks: List of chunked elements
             metadata: Additional metadata about the chunking process
             stats: Statistics about the chunking operation
+            image_paths: List of image paths associated with chunks
         """
         self.chunks = chunks
         self.metadata = metadata or {}
         self.stats = stats or {}
+        self.image_paths = image_paths or []
 
         # Validate input data
         self._validate_result()
@@ -50,6 +53,9 @@ class ChunkResult:
 
         if not isinstance(self.stats, dict):
             raise TypeError("stats must be a dictionary")
+
+        if not isinstance(self.image_paths, list):
+            raise TypeError("image_paths must be a list")
 
     @property
     def chunk_count(self) -> int:
@@ -76,6 +82,16 @@ class ChunkResult:
         if self.is_empty:
             return 0.0
         return self.total_characters / self.chunk_count
+
+    @property
+    def image_count(self) -> int:
+        """Get the total number of images associated with chunks."""
+        return len(self.image_paths)
+
+    @property
+    def has_images(self) -> bool:
+        """Check if any images are associated with the chunks."""
+        return len(self.image_paths) > 0
 
     def get_chunk_by_index(self, index: int) -> Any:
         """
@@ -109,6 +125,39 @@ class ChunkResult:
             if hasattr(chunk, 'text') and chunk.text and chunk.text.strip()
         ]
 
+    def get_images_for_chunk(self, chunk: Any) -> List[str]:
+        """
+        Get images relevant to a specific chunk based on page correlation.
+
+        Args:
+            chunk: The chunk element to find images for
+
+        Returns:
+            List of image paths relevant to the chunk
+        """
+        if not self.image_paths:
+            return []
+
+        # Get page number from chunk metadata
+        chunk_page = None
+        if hasattr(chunk, 'metadata'):
+            if hasattr(chunk.metadata, 'page_number'):
+                chunk_page = chunk.metadata.page_number
+            elif isinstance(chunk.metadata, dict):
+                chunk_page = chunk.metadata.get('page_number')
+
+        if chunk_page is None:
+            return []
+
+        # Filter images by page number
+        relevant_images = []
+        for img_path in self.image_paths:
+            # Check if image path contains page reference
+            if f"page_{chunk_page}_" in img_path or f"_page{chunk_page}_" in img_path:
+                relevant_images.append(img_path)
+
+        return relevant_images
+
     def update_metadata(self, **kwargs) -> None:
         """
         Update metadata with additional key-value pairs.
@@ -140,18 +189,21 @@ class ChunkResult:
             "average_chunk_size": self.average_chunk_size,
             "chunks_with_text": len(self.get_chunks_with_text()),
             "is_empty": self.is_empty,
+            "image_count": self.image_count,
+            "has_images": self.has_images,
             "metadata_keys": list(self.metadata.keys()),
             "stats_keys": list(self.stats.keys()),
         }
 
     def __repr__(self) -> str:
         """String representation of the chunk result."""
-        return f"ChunkResult(chunks={len(self.chunks)}, metadata={len(self.metadata)} keys)"
+        return f"ChunkResult(chunks={len(self.chunks)}, images={len(self.image_paths)}, metadata={len(self.metadata)} keys)"
 
     def __str__(self) -> str:
         """Human-readable string representation."""
         return (
             f"ChunkResult: {self.chunk_count} chunks, "
+            f"{len(self.image_paths)} images, "
             f"{self.total_characters} total characters, "
             f"avg size: {self.average_chunk_size:.1f} chars"
         )
@@ -186,13 +238,14 @@ class EmptyChunkResult(ChunkResult):
             **metadata: Additional metadata about the failure
         """
         chunks = []
+        image_paths = []
         stats = {"failed": True, "error_message": error_message}
 
         # Add error message to metadata if provided
         if error_message:
             metadata["error"] = error_message
 
-        super().__init__(chunks=chunks, metadata=metadata, stats=stats)
+        super().__init__(chunks=chunks, metadata=metadata, stats=stats, image_paths=image_paths)
 
     @property
     def error_message(self) -> Optional[str]:

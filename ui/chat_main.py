@@ -3,6 +3,8 @@ Main Chat Interface - Default page for RAG Chatbot.
 """
 
 import logging
+import os
+from typing import List, Dict, Any
 
 import streamlit as st
 
@@ -176,8 +178,22 @@ class ChatMainUI:
             with st.chat_message("assistant"):
                 with st.spinner("Thinking..."):
                     response = self._generate_response(prompt)
-                    st.markdown(response)
+
+                    # Display response with images
+                    image_paths = st.session_state.get("last_response_images", [])
+                    if image_paths and self.session_manager.get("chat_mode") == "rag":
+                        # Use the enhanced display method for RAG responses with images
+                        self.display_response_with_images(response, image_paths)
+                    else:
+                        # Standard text display for LLM-only or no images
+                        st.markdown("### 🤖 Assistant Response")
+                        st.markdown(response)
+
                     self._add_message("assistant", response)
+
+                    # Clear stored images after display
+                    if "last_response_images" in st.session_state:
+                        del st.session_state.last_response_images
 
     def _add_message(self, role: str, content: str) -> None:
         """Add message to chat history."""
@@ -233,12 +249,22 @@ class ChatMainUI:
                     "Answer based on general knowledge.*"
                 )
 
-            # Step 4: Extract context
+            # Step 4: Extract context and images
             retrieved_chunks = []
+            all_image_paths = []
+
             for result in search_results:
                 chunk = result["payload"].get("chunk", "")
                 score = result["score"]
                 retrieved_chunks.append((chunk, score))
+
+                # Extract image paths from metadata
+                image_paths = result["payload"].get("image_paths", [])
+                if image_paths:
+                    all_image_paths.extend(image_paths)
+
+            # Remove duplicate image paths while preserving order
+            unique_image_paths = list(dict.fromkeys(all_image_paths))
 
             # Display retrieved docs in sidebar
             with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
@@ -291,6 +317,14 @@ class ChatMainUI:
                 f"retrieved document(s)*"
             )
 
+            # Step 7: Display response with images
+            # This will display the images directly in the chat UI
+            if unique_image_paths:
+                # Store images in session state for display in chat message
+                st.session_state.last_response_images = unique_image_paths
+            else:
+                st.session_state.last_response_images = []
+
             return response
 
         except Exception as e:
@@ -329,6 +363,79 @@ class ChatMainUI:
 
         except Exception as e:
             return f"❌ LLM Error: {str(e)}"
+
+    def display_response_with_images(self, response_text: str, image_paths: List[str]) -> None:
+        """Display text response with associated images below."""
+        # Display text response (existing functionality)
+        st.markdown("### 🤖 Assistant Response")
+        st.markdown(response_text)
+
+        # Display images if available
+        if image_paths:
+            st.markdown("### 📎 Related Images")
+            self._display_images(image_paths)
+
+    def _display_images(self, image_paths: List[str]) -> None:
+        """Display images with error handling."""
+        for i, img_path in enumerate(image_paths):
+            try:
+                if self._validate_image_file(img_path):
+                    # Display image with caption
+                    st.image(
+                        img_path,
+                        caption=f"Extracted from document (Image {i+1})",
+                        use_column_width=True,
+                        output_format="auto"
+                    )
+                else:
+                    # Show error for missing image
+                    st.error(f"🖼️ Image {i+1}: File not found or corrupted")
+
+            except Exception as e:
+                st.error(f"🖼️ Image {i+1}: Error loading image - {str(e)}")
+
+    def _validate_image_file(self, image_path: str) -> bool:
+        """Validate if image file is accessible and valid."""
+        try:
+            return (
+                os.path.exists(image_path) and
+                os.path.isfile(image_path) and
+                os.path.getsize(image_path) > 0 and
+                image_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'))
+            )
+        except Exception:
+            return False
+
+    def _get_relevant_chunks_with_images(self, query: str) -> List[Dict[str, Any]]:
+        """Retrieve chunks with image metadata."""
+        # Get session managers
+        qdrant_manager = self.session_manager.get("qdrant_manager")
+        embedding_strategy = self.session_manager.get("embedding_strategy")
+
+        # Generate query embedding
+        query_embedding = embedding_strategy.embed_query(query)
+
+        # Search Qdrant
+        num_docs = self.session_manager.get("number_docs_retrieval", 3)
+        score_threshold = self.session_manager.get("score_threshold", 0.5)
+
+        search_results = qdrant_manager.search(
+            query_vector=query_embedding,
+            top_k=num_docs,
+            score_threshold=score_threshold,
+        )
+
+        # Enhance with image information
+        enhanced_chunks = []
+        for chunk_data in search_results:
+            chunk_dict = {
+                'text': chunk_data.get("payload", {}).get("chunk", ""),
+                'metadata': chunk_data.get("payload", {}),
+                'image_paths': chunk_data.get("payload", {}).get("image_paths", [])
+            }
+            enhanced_chunks.append(chunk_dict)
+
+        return enhanced_chunks
 
     def render_sidebar_stats(self) -> None:
         """Render chat statistics in sidebar."""

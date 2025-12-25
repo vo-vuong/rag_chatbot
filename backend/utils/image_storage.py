@@ -141,15 +141,15 @@ class ImageStorageUtility:
         # Register HEIF opener
         pi_heif.register_heif_opener()
 
-        # Create base directories (only if requested)
-        if create_structure_on_init:
-            self._create_directory_structure()
-
         # Initialize stats tracking
         self.stats = StorageStats()
         self._start_time = None
 
-        # Configure logger
+        # Create base directories (only if requested)
+        if create_structure_on_init:
+            self._create_directory_structure()
+
+        # Configure logger (needs base path to exist)
         self._setup_logging()
 
         logger.info(f"ImageStorageUtility initialized with path: {self.base_path}")
@@ -177,6 +177,9 @@ class ImageStorageUtility:
 
     def _setup_logging(self) -> None:
         """Setup logging configuration."""
+        # Ensure base path exists before creating log file
+        self.base_path.mkdir(parents=True, exist_ok=True)
+
         log_file = self.base_path / "image_storage.log"
 
         # Create file handler

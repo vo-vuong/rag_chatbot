@@ -233,39 +233,12 @@ class DataUploadUI:
 
         self.session_manager.set("pdf_processing_strategy", strategy_choice)
 
-        # Advanced options in expander
-        with st.expander("🔧 Advanced PDF Processing Options", expanded=False):
-            col1, col2 = st.columns(2)
-
-            with col1:
-                semantic_chunking = st.checkbox(
-                    "Enable Semantic Chunking",
-                    value=self.session_manager.get("pdf_semantic_chunking", True),
-                    help="Use title-based semantic chunking for better content understanding",
-                )
-                self.session_manager.set("pdf_semantic_chunking", semantic_chunking)
-
-            with col2:
-                if semantic_chunking:
-                    chunk_size = st.slider(
-                        "Chunk Size (characters):",
-                        min_value=500,
-                        max_value=3000,
-                        value=self.session_manager.get("pdf_chunk_size", 1000),
-                        step=100,
-                        help="Maximum size of each chunk",
-                    )
-                    self.session_manager.set("pdf_chunk_size", chunk_size)
-
-                    chunk_overlap = st.slider(
-                        "Chunk Overlap (characters):",
-                        min_value=0,
-                        max_value=500,
-                        value=self.session_manager.get("pdf_chunk_overlap", 100),
-                        step=50,
-                        help="Overlap between chunks for context preservation",
-                    )
-                    self.session_manager.set("pdf_chunk_overlap", chunk_overlap)
+        # Semantic chunking is now ALWAYS enabled using TRUE embedding-based chunking
+        # Configuration managed automatically via backend/strategies/pdf_strategy.py
+        st.info(
+            "ℹ️ **Semantic Chunking**: Now automatically enabled using TRUE embedding-based "
+            "chunking for optimal content understanding. Configuration is managed automatically."
+        )
 
         # Image Captioning Settings
         with st.expander("⚙️ Advanced Image Captioning Settings", expanded=False):

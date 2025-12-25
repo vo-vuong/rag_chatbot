@@ -7,6 +7,7 @@ A comprehensive Retrieval-Augmented Generation (RAG) chatbot built with Streamli
 - 🤖 **Multi-LLM Support**: OpenAI (GPT-4o/Mini), Google Gemini (implemented), and planned Ollama support
 - 🖼️ **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision captioning
 - 📄 **Advanced Document Processing**: 5-tier PDF strategy and streaming CSV pipeline with semantic chunking
+- 🧠 **Semantic Chunking**: Embedding-based chunking using LangChain for coherent text segmentation
 - 💾 **Vector Database**: Qdrant integration for efficient similarity search and collection management
 - 🔤 **OCR Integration**: Tesseract OCR with 125+ language support including English and Vietnamese
 - 🔄 **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes

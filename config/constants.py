@@ -55,6 +55,11 @@ RECURSIVE_TOKEN_CHUNKER = "RecursiveTokenChunker"
 SEMANTIC_CHUNKER = "SemanticChunker"
 AGENTIC_CHUNKER = "AgenticChunker"
 
+# Semantic Chunking Defaults
+DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE = 60  # 60th percentile
+DEFAULT_SEMANTIC_BUFFER_SIZE = 500  # characters
+DEFAULT_SEMANTIC_EMBEDDING_MODEL = "text-embedding-3-small"
+
 # ============================================================
 # CHAT ROLES
 # ============================================================

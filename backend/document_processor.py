@@ -9,6 +9,11 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+from config.constants import (
+    DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
+    DEFAULT_SEMANTIC_BUFFER_SIZE,
+    DEFAULT_SEMANTIC_EMBEDDING_MODEL
+)
 
 from .chunking.semantic_chunker import SemanticChunker
 from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
@@ -38,13 +43,9 @@ DEFAULT_CONFIG = {
         "languages": ["en", "vi"],  # Default OCR languages
     },
     "chunking": {
-        "chunk_size": 500,
-        "chunk_overlap": 50,
-        "max_characters": 1500,
-        "combine_text_under_n_chars": 1000,
-        "new_after_n_chars": 3000,
-        "multipage_sections": True,
-        "enforce_strict": False,
+        "breakpoint_percentile": DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
+        "buffer_size": DEFAULT_SEMANTIC_BUFFER_SIZE,
+        "embedding_model": DEFAULT_SEMANTIC_EMBEDDING_MODEL
     },
 }
 
@@ -90,24 +91,25 @@ class DocumentProcessor:
             ocr_config = self.config.get("ocr", {})
             chunking_config = self.config.get("chunking", {})
 
+            # TODO Phase 02: Re-enable chunker creation with new SemanticChunker
             # Create chunker instance
-            chunker = SemanticChunker(
-                chunk_size=chunking_config.get("chunk_size", 500),
-                chunk_overlap=chunking_config.get("chunk_overlap", 50),
-                max_characters=chunking_config.get("max_characters", 1500),
-                combine_text_under_n_chars=chunking_config.get(
-                    "combine_text_under_n_chars", 1000
-                ),
-                new_after_n_chars=chunking_config.get("new_after_n_chars", 3000),
-                multipage_sections=chunking_config.get("multipage_sections", True),
-                enforce_strict=chunking_config.get("enforce_strict", False),
-            )
+            # chunker = SemanticChunker(
+            #     chunk_size=chunking_config.get("chunk_size", 500),
+            #     chunk_overlap=chunking_config.get("chunk_overlap", 50),
+            #     max_characters=chunking_config.get("max_characters", 1500),
+            #     combine_text_under_n_chars=chunking_config.get(
+            #         "combine_text_under_n_chars", 1000
+            #     ),
+            #     new_after_n_chars=chunking_config.get("new_after_n_chars", 3000),
+            #     multipage_sections=chunking_config.get("multipage_sections", True),
+            #     enforce_strict=chunking_config.get("enforce_strict", False),
+            # )
 
             # Create PDF strategy
             pdf_strategy = PDFProcessingStrategy(
                 config=pdf_config,
                 ocr_languages=ocr_config.get("languages", ["en", "vi"]),
-                chunker=chunker,
+                chunker=None,  # TODO Phase 02: Pass chunker here
             )
 
             self.strategies[".pdf"] = pdf_strategy
@@ -137,6 +139,7 @@ class DocumentProcessor:
         strategy_name: Optional[str] = None,
         languages: Optional[List[str]] = None,
         original_filename: Optional[str] = None,
+        openai_api_key: Optional[str] = None,
         **kwargs,
     ) -> ProcessingResult:
         """
@@ -147,6 +150,7 @@ class DocumentProcessor:
             strategy_name: Optional specific strategy to use
             languages: List of languages for processing
             original_filename: Original filename to override metadata
+            openai_api_key: OpenAI API key for embeddings/vision
             **kwargs: Additional parameters for processing
 
         Returns:
@@ -183,6 +187,22 @@ class DocumentProcessor:
                 self.logger.error(error_msg)
                 self.processing_stats["failed_processed"] += 1
                 return ProcessingResult(success=False, error_message=error_msg)
+
+            # Pass openai_api_key to strategy if needed (for re-initialization with API key)
+            if openai_api_key and file_extension == ".pdf":
+                # Update PDF strategy config with API key
+                pdf_config = self.config.get("pdf", {}).copy()
+                chunking_config = self.config.get("chunking", {}).copy()
+                pdf_config["openai_api_key"] = openai_api_key
+                pdf_config["chunking"] = chunking_config
+
+                # Reinitialize PDF strategy with API key
+                ocr_config = self.config.get("ocr", {})
+                strategy = PDFProcessingStrategy(
+                    config=pdf_config,
+                    ocr_languages=ocr_config.get("languages", ["en", "vi"]),
+                    chunker=None  # Will be created in strategy with API key
+                )
 
             # Process document with strategy
             result = strategy.extract_elements(

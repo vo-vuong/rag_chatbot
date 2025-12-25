@@ -4,6 +4,7 @@ Implements Singleton pattern for centralized state management.
 """
 
 import logging
+import os
 import threading
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -13,7 +14,12 @@ import streamlit as st
 
 from backend.document_processor import DocumentProcessor, ProcessingResult
 from backend.prompts.prompt_manager import PromptManager
-from config.constants import PAGE_CHAT
+from config.constants import (
+    DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
+    DEFAULT_SEMANTIC_BUFFER_SIZE,
+    DEFAULT_SEMANTIC_EMBEDDING_MODEL,
+    PAGE_CHAT,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -24,7 +30,9 @@ class SessionManager:
     """Singleton class to manage Streamlit session state."""
 
     _instance = None
-    _image_manager_lock = threading.Lock()  # Security: Thread-safe image manager initialization
+    _image_manager_lock = (
+        threading.Lock()
+    )  # Security: Thread-safe image manager initialization
 
     def __new__(cls):
         if cls._instance is None:
@@ -93,10 +101,8 @@ class SessionManager:
             # PDF PROCESSING CONFIGURATION
             # ============================================================
             'pdf_processing_strategy': 'auto',  # auto, ocr, fast, fallback
-            'pdf_semantic_chunking': True,  # Use semantic chunking for PDFs
-            'pdf_chunk_size': 1000,  # Chunk size for PDF semantic chunking
-            'pdf_chunk_overlap': 100,  # Overlap for PDF chunks
-            'pdf_combine_small_chunks': 1000,  # Threshold to combine small chunks
+            # NOTE: Semantic chunking is ALWAYS enabled (embedding-based)
+            # Chunking configuration managed via chunking section below
             'pdf_processing_progress': {},  # Progress tracking for PDF processing
             'uploaded_files_info': [],  # Information about uploaded files
             'document_processor': None,  # DocumentProcessor instance (lazy initialization)
@@ -299,24 +305,25 @@ class SessionManager:
                 "strategy": self.get("pdf_processing_strategy", "auto"),
                 "infer_table_structure": True,
                 "extract_images": True,  # Enable image extraction by default
-                "chunk_after_extraction": False,  # Handle chunking separately
+                "chunk_after_extraction": True,  # Enable semantic chunking
                 "caption_failure_mode": self.get("caption_failure_mode", "graceful"),
-                "openai_api_key": self.get("openai_api_key") or __import__('os').getenv("OPENAI_API_KEY"),
+                "openai_api_key": self.get("openai_api_key")
+                or os.getenv("OPENAI_API_KEY"),
             },
             "ocr": {
                 "languages": [self.get("language", "en")],
                 "enabled": True,  # OCR is always available for strategies that need it
             },
             "chunking": {
-                "chunk_size": self.get("pdf_chunk_size", 1000),
-                "chunk_overlap": self.get("pdf_chunk_overlap", 100),
-                "max_characters": self.get("pdf_chunk_size", 1000) * 2,
-                "combine_text_under_n_chars": self.get(
-                    "pdf_combine_small_chunks", 1000
+                "breakpoint_percentile": self.get(
+                    "semantic_percentile", DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE
                 ),
-                "new_after_n_chars": 3000,
-                "multipage_sections": True,
-                "enforce_strict": False,
+                "buffer_size": self.get(
+                    "semantic_buffer_size", DEFAULT_SEMANTIC_BUFFER_SIZE
+                ),
+                "embedding_model": self.get(
+                    "semantic_embedding_model", DEFAULT_SEMANTIC_EMBEDDING_MODEL
+                ),
             },
         }
 
@@ -336,14 +343,9 @@ class SessionManager:
         # OCR configuration is now handled automatically by strategies
         # No longer need to store OCR enabled state in session
 
-        if "chunking" in config:
-            chunking_config = config["chunking"]
-            self.set("pdf_chunk_size", chunking_config.get("chunk_size", 1000))
-            self.set("pdf_chunk_overlap", chunking_config.get("chunk_overlap", 100))
-            self.set(
-                "pdf_combine_small_chunks",
-                chunking_config.get("combine_text_under_n_chars", 1000),
-            )
+        # NOTE: Chunking config (breakpoint_percentile, buffer_size, embedding_model)
+        # is now managed via get_pdf_config() and passed to SemanticChunker
+        # No need to store in session state
 
         # Reset document processor to apply new configuration
         self.set('document_processor', None)
@@ -542,7 +544,9 @@ class SessionManager:
 
             # Process document
             self.update_processing_progress(file_name, 50, "processing")
-            result = processor.process_document(file_path, original_filename=original_filename, **kwargs)
+            result = processor.process_document(
+                file_path, original_filename=original_filename, **kwargs
+            )
 
             # Update statistics based on result
             if result.success:
@@ -598,7 +602,9 @@ class SessionManager:
         """Set image search score threshold."""
         # Security: Validate input type
         if not isinstance(threshold, (int, float)):
-            raise TypeError(f"Threshold must be a number, got {type(threshold).__name__}")
+            raise TypeError(
+                f"Threshold must be a number, got {type(threshold).__name__}"
+            )
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("Threshold must be between 0.0 and 1.0")
         st.session_state["image_score_threshold"] = float(threshold)
@@ -626,7 +632,7 @@ class SessionManager:
                         image_manager = QdrantManager(
                             collection_name=collection_name,
                             host=qdrant_host,
-                            port=qdrant_port
+                            port=qdrant_port,
                         )
 
                         # Check if collection exists
@@ -638,7 +644,9 @@ class SessionManager:
                             return None
 
                         st.session_state["image_qdrant_manager"] = image_manager
-                        logger.info(f"Image QdrantManager initialized: {collection_name}")
+                        logger.info(
+                            f"Image QdrantManager initialized: {collection_name}"
+                        )
 
                     except Exception as e:
                         logger.error(f"Failed to initialize image QdrantManager: {e}")

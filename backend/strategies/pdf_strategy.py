@@ -63,7 +63,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         Initialize PDF processing strategy.
 
         Args:
-            config: Configuration dictionary for processing parameters
+            config: Configuration dictionary (must include openai_api_key for chunking)
             ocr_languages: List of languages for OCR (e.g., ['en', 'vi'])
             chunker: Optional semantic chunker instance
         """
@@ -72,8 +72,40 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         # Initialize OCR
         self.ocr = get_tesseract_ocr(languages=ocr_languages)
 
-        # Initialize chunker
-        self.chunker = chunker or SemanticChunker()
+        # Initialize chunker with OpenAI API key
+        openai_api_key = self.config.get("openai_api_key")
+        if not openai_api_key:
+            raise ValueError("openai_api_key required in config for semantic chunking")
+
+        if chunker:
+            self.chunker = chunker
+        else:
+            # Import constants
+            from config.constants import (
+                DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
+                DEFAULT_SEMANTIC_BUFFER_SIZE,
+                DEFAULT_SEMANTIC_EMBEDDING_MODEL
+            )
+
+            # Get chunking config
+            chunking_config = self.config.get("chunking", {})
+            percentile = chunking_config.get(
+                "breakpoint_percentile", DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE
+            )
+            buffer_size = chunking_config.get(
+                "buffer_size", DEFAULT_SEMANTIC_BUFFER_SIZE
+            )
+            embedding_model = chunking_config.get(
+                "embedding_model", DEFAULT_SEMANTIC_EMBEDDING_MODEL
+            )
+
+            # Initialize TRUE semantic chunker
+            self.chunker = SemanticChunker(
+                openai_api_key=openai_api_key,
+                breakpoint_percentile=percentile,
+                buffer_size=buffer_size,
+                embedding_model=embedding_model
+            )
 
         # Set processing parameters from config
         self.processing_strategy = self.config.get("strategy", DEFAULT_PDF_STRATEGY)

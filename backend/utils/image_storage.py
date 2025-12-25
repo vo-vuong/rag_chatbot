@@ -120,7 +120,8 @@ class ImageStorageUtility:
         base_storage_path: str,
         max_workers: int = 4,
         enable_optimization: bool = True,
-        create_subdirs: bool = True
+        create_subdirs: bool = True,
+        create_structure_on_init: bool = True
     ):
         """
         Initialize the image storage utility.
@@ -129,7 +130,8 @@ class ImageStorageUtility:
             base_storage_path: Base directory for image storage
             max_workers: Number of worker threads for parallel processing
             enable_optimization: Whether to enable image optimization
-            create_subdirs: Whether to create subdirectories for organization
+            create_subdirs: Whether to create date-based subdirectories
+            create_structure_on_init: Whether to create directory structure on initialization
         """
         self.base_path = Path(base_storage_path)
         self.max_workers = max_workers
@@ -139,8 +141,9 @@ class ImageStorageUtility:
         # Register HEIF opener
         pi_heif.register_heif_opener()
 
-        # Create base directories
-        self._create_directory_structure()
+        # Create base directories (only if requested)
+        if create_structure_on_init:
+            self._create_directory_structure()
 
         # Initialize stats tracking
         self.stats = StorageStats()
@@ -153,6 +156,7 @@ class ImageStorageUtility:
 
     def _create_directory_structure(self) -> None:
         """Create the necessary directory structure for image storage."""
+        # Always create base path and core subdirectories (images, metadata, temp)
         directories = [
             self.base_path,
             self.base_path / "images",
@@ -160,8 +164,8 @@ class ImageStorageUtility:
             self.base_path / "temp",
         ]
 
+        # Only create date-based subdirectories if create_subdirs is True
         if self.create_subdirs:
-            # Create date-based subdirectories
             today = datetime.now().strftime("%Y-%m-%d")
             directories.extend([
                 self.base_path / "images" / today,

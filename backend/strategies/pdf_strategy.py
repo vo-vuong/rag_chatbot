@@ -83,14 +83,15 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self.extract_images = self.config.get("extract_images", DEFAULT_EXTRACT_IMAGES)
         self.chunk_after_extraction = self.config.get("chunk_after_extraction", True)
 
-        # Initialize image storage
+        # Initialize image storage (template instance - actual storage uses doc-specific instances)
         image_storage_path = self.config.get(
             "image_storage_path", DEFAULT_IMAGE_STORAGE_PATH
         )
         self.image_storage = ImageStorageUtility(
             base_storage_path=image_storage_path,
             enable_optimization=True,
-            create_subdirs=True,
+            create_subdirs=False,  # Don't create date subdirs
+            create_structure_on_init=False,  # Don't create folders - only used as template
         )
 
         # Processing state
@@ -624,6 +625,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 "total_pages": total_pages,
                 "languages": languages,
                 "extracted_images": image_stats.get("total_images", 0),
+                "total_images": len(image_data),  # Add total_images field for UI
                 "stored_images": image_stats.get("stored_images", 0),
                 "failed_images": image_stats.get("failed_images", 0),
                 "captioned_count": captioned_count,

@@ -396,6 +396,156 @@ class DocumentProcessor:
         # Return default strategy for file type
         return self.strategies.get(file_extension)
 
+    def upload_to_qdrant(
+        self,
+        processing_result: ProcessingResult,
+        embeddings: List[List[float]],
+        source_file: str,
+        text_collection: str = "rag_chatbot_text",
+        image_collection: str = "rag_chatbot_images"
+    ) -> Dict[str, int]:
+        """
+        Upload text chunks and image captions to separate Qdrant collections.
+
+        Args:
+            processing_result: Result from document processing
+            embeddings: Embeddings for text chunks
+            source_file: Source filename for metadata
+            text_collection: Name of text collection (default: rag_chatbot_text)
+            image_collection: Name of image collection (default: rag_chatbot_images)
+
+        Returns:
+            Dict with upload counts: {"text_chunks": 150, "images": 12}
+
+        Raises:
+            Exception: If upload fails
+        """
+        from .vector_db.qdrant_manager import QdrantManager
+        import pandas as pd
+
+        upload_counts = {"text_chunks": 0, "images": 0}
+
+        # Step 1: Upload text chunks to text collection (only if there are chunks)
+        if processing_result.elements and embeddings:
+            try:
+                text_manager = QdrantManager(
+                    collection_name=text_collection,
+                    host=self.config.get("qdrant_host", "localhost"),
+                    port=self.config.get("qdrant_port", 6333)
+                )
+
+                # Ensure collection exists with correct dimension
+                vector_dim = len(embeddings[0])
+                text_manager.ensure_collection(dimension=vector_dim)
+
+                # Prepare chunks DataFrame
+                chunks_df = pd.DataFrame([
+                    {
+                        "chunk": chunk.text if hasattr(chunk, 'text') else str(chunk),
+                        "page_number": chunk.metadata.page_number if hasattr(chunk, 'metadata') else 0,
+                        "language": chunk.metadata.get("language", "unknown") if hasattr(chunk, 'metadata') else "unknown"
+                    }
+                    for chunk in processing_result.elements
+                ])
+
+                # Upload to Qdrant
+                success = text_manager.add_documents(
+                    chunks_df=chunks_df,
+                    embeddings=embeddings,
+                    source_file=source_file
+                )
+
+                if success:
+                    upload_counts["text_chunks"] = len(chunks_df)
+                    self.logger.info(f"Uploaded {len(chunks_df)} text chunks to '{text_collection}'")
+                else:
+                    raise Exception("Text chunk upload failed")
+
+            except Exception as e:
+                self.logger.error(f"Failed to upload text chunks: {e}")
+                raise
+        else:
+            self.logger.info("No text chunks to upload, skipping text collection")
+
+        # Step 2: Upload image captions to image collection
+        if processing_result.image_data:
+            try:
+                # Get embedding strategy from config
+                embedding_strategy = self._get_embedding_strategy()
+
+                # Embed image captions
+                captions = [img["caption"] for img in processing_result.image_data]
+                self.logger.info(f"Embedding {len(captions)} image captions...")
+
+                caption_embeddings = embedding_strategy.embed_texts(captions)
+
+                # Create image manager
+                image_manager = QdrantManager(
+                    collection_name=image_collection,
+                    host=self.config.get("qdrant_host", "localhost"),
+                    port=self.config.get("qdrant_port", 6333)
+                )
+
+                # Ensure collection exists with correct dimension
+                vector_dim = len(caption_embeddings[0])
+                image_manager.ensure_collection(dimension=vector_dim)
+
+                # Prepare images DataFrame
+                images_df = pd.DataFrame([
+                    {
+                        "chunk": img["caption"],  # Store caption in "chunk" field for consistency
+                        "caption": img["caption"],
+                        "image_path": img["image_path"],
+                        "image_hash": img["image_hash"],
+                        "page_number": img["page_number"],
+                        "width": img["image_metadata"]["width"],
+                        "height": img["image_metadata"]["height"],
+                        "format": img["image_metadata"]["format"],
+                        "optimized_size_bytes": img["image_metadata"]["optimized_size_bytes"],
+                        "caption_cost": img["cost"]
+                    }
+                    for img in processing_result.image_data
+                ])
+
+                # Upload to Qdrant
+                success = image_manager.add_documents(
+                    chunks_df=images_df,
+                    embeddings=caption_embeddings,
+                    source_file=source_file
+                )
+
+                if success:
+                    upload_counts["images"] = len(images_df)
+                    self.logger.info(
+                        f"Uploaded {len(images_df)} image captions to '{image_collection}'"
+                    )
+
+                    # Log total caption cost
+                    total_cost = sum(img["cost"] for img in processing_result.image_data)
+                    self.logger.info(f"Total caption cost: ${total_cost:.4f}")
+                else:
+                    raise Exception("Image caption upload failed")
+
+            except Exception as e:
+                self.logger.error(f"Failed to upload image captions: {e}")
+                # Don't fail entire upload if only images fail
+                self.logger.warning("Continuing with text-only upload (images skipped)")
+
+        return upload_counts
+
+    def _get_embedding_strategy(self):
+        """Get embedding strategy from session manager or create new one."""
+        from backend.embeddings.openai_embeddings import OpenAIEmbeddingStrategy
+
+        api_key = self.config.get("openai_api_key") or self.config.get("pdf", {}).get("openai_api_key")
+        if not api_key:
+            raise ValueError("OpenAI API key required for embedding")
+
+        return OpenAIEmbeddingStrategy(
+            api_key=api_key,
+            model=self.config.get("embedding_model", "text-embedding-3-small")
+        )
+
 
 # Global document processor instance
 _document_processor: Optional[DocumentProcessor] = None

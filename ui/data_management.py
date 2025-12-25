@@ -261,8 +261,8 @@ class CollectionCreationTab:
                     "Vector Dimension *",
                     min_value=1,
                     max_value=10000,
-                    value=384,
-                    help="Size of the embedding vectors (e.g., 384 for sentence-transformers/all-MiniLM-L6-v2)",
+                    value=1536,
+                    help="Size of the embedding vectors (e.g., 1536 for sentence-transformers/all-MiniLM-L6-v2)",
                 )
 
             distance_metric = st.selectbox(

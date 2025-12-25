@@ -97,6 +97,28 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self.last_processing_strategy_used = None
         self.ocr_used = False
 
+        # Initialize ImageCaptioner if API key available
+        self.openai_api_key = self.config.get("openai_api_key")
+        self.captioner = None
+        self.caption_failure_mode = self.config.get("caption_failure_mode", "graceful")
+
+        if self.openai_api_key and self.extract_images:
+            try:
+                from backend.vision.image_captioner import ImageCaptioner
+                self.captioner = ImageCaptioner(
+                    api_key=self.openai_api_key,
+                    model=self.config.get("vision_model", "gpt-4o-mini"),
+                    max_tokens=self.config.get("vision_max_tokens", 100),
+                    temperature=self.config.get("vision_temperature", 0.3),
+                    detail_mode=self.config.get("vision_detail_mode", "low")
+                )
+                self._logger.info("ImageCaptioner initialized for PDF processing")
+            except Exception as e:
+                self._logger.warning(f"ImageCaptioner not available: {e}")
+                self.captioner = None
+        else:
+            self._logger.info("Image captioning disabled (no API key or extract_images=False)")
+
         self._logger.info(
             f"PDF processing strategy initialized with OCR available: {self.ocr.is_configured}"
         )
@@ -263,7 +285,29 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
 
                     # Get additional metadata
                     page_number = getattr(element_metadata, 'page_number', idx + 1)
-                    bbox = getattr(element_metadata, 'coordinates', None)
+
+                    # Convert coordinates to JSON-serializable tuple
+                    raw_bbox = getattr(element_metadata, 'coordinates', None)
+                    if raw_bbox is not None:
+                        # Handle PixelSpace object from unstructured
+                        if hasattr(raw_bbox, 'points'):
+                            # Extract bounding box coordinates from PixelSpace
+                            points = raw_bbox.points
+                            if len(points) >= 2:
+                                # Get min/max x,y from points
+                                x_coords = [p[0] for p in points]
+                                y_coords = [p[1] for p in points]
+                                bbox = (min(x_coords), min(y_coords), max(x_coords), max(y_coords))
+                            else:
+                                bbox = None
+                        elif isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
+                            # Already a tuple/list of 4 coordinates
+                            bbox = tuple(raw_bbox)
+                        else:
+                            bbox = None
+                    else:
+                        bbox = None
+
                     original_filename = getattr(
                         element_metadata, 'filename', f"image_{idx}"
                     )
@@ -308,6 +352,126 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         )
 
         return image_stats
+
+    def _caption_extracted_images(
+        self, image_paths: List[str], document_name: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate captions for extracted images using Vision API.
+
+        Args:
+            image_paths: List of paths to extracted images
+            document_name: Name of the document for context
+
+        Returns:
+            List of dictionaries containing image data with captions
+        """
+        from backend.vision.image_captioner import ImageCaptioningError
+        import hashlib
+
+        image_data = []
+
+        if not self.captioner or not image_paths:
+            self._logger.info("Skipping image captioning (captioner not available or no images)")
+            return image_data
+
+        self._logger.info(f"Starting caption generation for {len(image_paths)} images...")
+
+        for idx, image_path in enumerate(image_paths):
+            try:
+                # Generate image hash for deduplication
+                with open(image_path, 'rb') as f:
+                    image_hash = hashlib.md5(f.read()).hexdigest()
+
+                # Get image metadata from path
+                from PIL import Image
+                img = Image.open(image_path)
+                width, height = img.size
+                format_name = img.format
+
+                # Extract page number from path or metadata
+                page_number = idx + 1  # Default fallback
+
+                # Caption the image
+                caption, cost = self.captioner.caption_image(image_path)
+
+                image_data.append({
+                    "image_path": str(image_path),
+                    "caption": caption,
+                    "image_hash": image_hash,
+                    "page_number": page_number,
+                    "image_metadata": {
+                        "width": width,
+                        "height": height,
+                        "format": format_name or "PNG",
+                        "optimized_size_bytes": Path(image_path).stat().st_size
+                    },
+                    "cost": cost
+                })
+
+                self._logger.debug(
+                    f"Captioned image {idx+1}/{len(image_paths)}: "
+                    f"'{caption[:50]}...' (cost: ${cost:.6f})"
+                )
+
+            except ImageCaptioningError as caption_error:
+                # Handle caption failure based on mode
+                if self.caption_failure_mode == "strict":
+                    self._logger.error(f"STRICT MODE: Caption failed: {caption_error}")
+                    raise Exception(
+                        f"Failed to caption image {image_path}. "
+                        f"Upload aborted (strict mode). Error: {str(caption_error)}"
+                    )
+                elif self.caption_failure_mode == "graceful":
+                    self._logger.warning(
+                        f"GRACEFUL MODE: Using fallback caption for {image_path}: {caption_error}"
+                    )
+                    # Use fallback caption
+                    try:
+                        with open(image_path, 'rb') as f:
+                            image_hash = hashlib.md5(f.read()).hexdigest()
+                        from PIL import Image
+                        img = Image.open(image_path)
+                        width, height = img.size
+
+                        image_data.append({
+                            "image_path": str(image_path),
+                            "caption": "Image (caption unavailable)",
+                            "image_hash": image_hash,
+                            "page_number": idx + 1,
+                            "image_metadata": {
+                                "width": width,
+                                "height": height,
+                                "format": img.format or "PNG",
+                                "optimized_size_bytes": Path(image_path).stat().st_size
+                            },
+                            "cost": 0.0
+                        })
+                    except Exception as e:
+                        self._logger.error(f"Failed to create fallback caption: {e}")
+                elif self.caption_failure_mode == "skip":
+                    self._logger.info(
+                        f"SKIP MODE: Skipping image {image_path} due to caption failure"
+                    )
+                    # Don't add to image_data
+                else:
+                    raise ValueError(f"Invalid caption_failure_mode: {self.caption_failure_mode}")
+
+            except Exception as e:
+                self._logger.error(f"Failed to process/caption image {image_path}: {e}")
+                # Handle based on failure mode
+                if self.caption_failure_mode == "strict":
+                    raise
+                # For graceful/skip modes, continue to next image
+                continue
+
+        total_cost = sum(img["cost"] for img in image_data)
+        self._logger.info(
+            f"Caption generation completed: {len(image_data)}/{len(image_paths)} images captioned, "
+            f"total cost: ${total_cost:.4f}"
+        )
+
+        return image_data
 
     @property
     def supported_extensions(self) -> List[str]:
@@ -409,6 +573,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
 
             # Process extracted images if enabled
             image_stats = {}
+            image_data = []
             if self.extract_images and elements:
                 # Get document name for organizing images
                 doc_name = self._get_document_name(original_filename or file_path)
@@ -419,6 +584,13 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 # Add image statistics to processing info
                 processing_info["image_extraction"] = image_stats
                 image_paths = image_stats.get("image_paths", [])
+
+                # Caption extracted images if captioner available
+                if image_paths:
+                    image_data = self._caption_extracted_images(image_paths, doc_name)
+                    self._logger.info(
+                        f"Captioned {len(image_data)} out of {len(image_paths)} extracted images"
+                    )
             else:
                 image_paths = []
 
@@ -436,6 +608,10 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             # Extract total pages from elements
             total_pages = self._extract_total_pages(elements)
 
+            # Calculate caption costs
+            total_caption_cost = sum(img["cost"] for img in image_data)
+            captioned_count = len(image_data)
+
             # Prepare metadata
             metadata = {
                 "file_path": file_path,
@@ -450,6 +626,8 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 "extracted_images": image_stats.get("total_images", 0),
                 "stored_images": image_stats.get("stored_images", 0),
                 "failed_images": image_stats.get("failed_images", 0),
+                "captioned_count": captioned_count,
+                "caption_total_cost": total_caption_cost,
                 "image_paths": image_stats.get("image_paths", []),
                 "document_name": image_stats.get("document_name", ""),
                 "image_extraction_enabled": self.extract_images,
@@ -470,6 +648,8 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 elements=elements,
                 metadata=metadata,
                 processing_time=processing_time,
+                image_paths=image_stats.get("image_paths", []),
+                image_data=image_data
             )
 
         except Exception as e:

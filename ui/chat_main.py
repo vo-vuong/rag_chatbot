@@ -179,21 +179,25 @@ class ChatMainUI:
                 with st.spinner("Thinking..."):
                     response = self._generate_response(prompt)
 
-                    # Display response with images
+                    # Get image data from session state
                     image_paths = st.session_state.get("last_response_images", [])
+                    image_captions = st.session_state.get("last_response_image_captions", [])
+
+                    # Display response
+                    st.markdown("### 🤖 Assistant Response")
+                    st.markdown(response)
+
+                    # Display images if available (NEW/ENHANCED)
                     if image_paths and self.session_manager.get("chat_mode") == "rag":
-                        # Use the enhanced display method for RAG responses with images
-                        self.display_response_with_images(response, image_paths)
-                    else:
-                        # Standard text display for LLM-only or no images
-                        st.markdown("### 🤖 Assistant Response")
-                        st.markdown(response)
+                        self._display_response_images(image_paths, image_captions)
 
                     self._add_message("assistant", response)
 
                     # Clear stored images after display
                     if "last_response_images" in st.session_state:
                         del st.session_state.last_response_images
+                    if "last_response_image_captions" in st.session_state:
+                        del st.session_state.last_response_image_captions
 
     def _add_message(self, role: str, content: str) -> None:
         """Add message to chat history."""
@@ -226,104 +230,152 @@ class ChatMainUI:
     def _generate_rag_response(
         self, query: str, llm_model, qdrant_manager, embedding_strategy
     ) -> str:
-        """Generate response using RAG (Retrieval + LLM)."""
+        """Generate response using dual search (text + images)."""
         try:
-            # Step 1: Generate query embedding
+            # Step 1: Generate query embedding (once for both searches)
             query_embedding = embedding_strategy.embed_query(query)
 
-            # Step 2: Search Qdrant
+            # Step 2: Search text collection (existing)
             num_docs = self.session_manager.get("number_docs_retrieval", 3)
-            score_threshold = self.session_manager.get("score_threshold", 0.5)
+            text_score_threshold = self.session_manager.get("score_threshold", 0.5)
 
-            search_results = qdrant_manager.search(
+            text_results = qdrant_manager.search(
                 query_vector=query_embedding,
                 top_k=num_docs,
-                score_threshold=score_threshold,
+                score_threshold=text_score_threshold,
             )
 
-            # Step 3: Check results
-            if not search_results:
-                # No relevant documents, fall back to LLM only
+            # Step 3: Search image collection (NEW)
+            image_manager = self.session_manager.get_image_qdrant_manager()
+            image_results = []
+
+            if image_manager and self.session_manager.get("enable_image_search", True):
+                image_score_threshold = self.session_manager.get_image_score_threshold()
+                image_top_k = self.session_manager.get("image_top_k", 1)
+
+                try:
+                    image_results = image_manager.search(
+                        query_vector=query_embedding,
+                        top_k=image_top_k,
+                        score_threshold=image_score_threshold,
+                    )
+
+                    if image_results:
+                        logger.info(
+                            f"Found {len(image_results)} relevant image(s) "
+                            f"(top score: {image_results[0]['score']:.3f})"
+                        )
+                    else:
+                        logger.debug("No images found above threshold")
+
+                except Exception as e:
+                    logger.warning(f"Image search failed: {e}")
+                    image_results = []
+            else:
+                logger.debug("Image collection not available, skipping image search")
+
+            # Step 4: Check if any results found
+            if not text_results:
+                # No text chunks found, fall back to LLM only
                 return self._generate_llm_only_response(query, llm_model) + (
                     "\n\n*Note: No relevant documents found. "
                     "Answer based on general knowledge.*"
                 )
 
-            # Step 4: Extract context and images
+            # Step 5: Extract text context
             retrieved_chunks = []
-            all_image_paths = []
 
-            for result in search_results:
+            for result in text_results:
                 chunk = result["payload"].get("chunk", "")
                 score = result["score"]
                 retrieved_chunks.append((chunk, score))
 
-                # Extract image paths from metadata
-                image_paths = result["payload"].get("image_paths", [])
-                if image_paths:
-                    all_image_paths.extend(image_paths)
-
-            # Remove duplicate image paths while preserving order
-            unique_image_paths = list(dict.fromkeys(all_image_paths))
-
-            # Display retrieved docs in sidebar
+            # Display retrieved docs in sidebar (existing)
             with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
                 for i, (chunk, score) in enumerate(retrieved_chunks, 1):
                     st.markdown(f"**Doc {i}** (Score: {score:.3f})")
                     st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
                     st.markdown("---")
 
-            # Step 5: Build context using PromptBuilder
+            # Step 6: Build text context (existing)
             if PROMPT_BUILDER_AVAILABLE:
-                # Format context with scores
                 chunks_only = [chunk for chunk, _ in retrieved_chunks]
                 scores_only = [score for _, score in retrieved_chunks]
-                context = PromptBuilder.format_context(
+                text_context = PromptBuilder.format_context(
                     chunks_only, scores_only, include_scores=False
                 )
             else:
-                # Legacy format
-                context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
+                text_context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
 
-            # Step 6: Build RAG prompt using active template
-            # Get active RAG template from SessionManager
+            # Step 7: Build image context (NEW)
+            image_context = ""
+            image_to_display = None
+            image_caption = ""
+
+            if image_results:
+                top_image = image_results[0]
+                caption = top_image["payload"].get("caption", "")
+                image_path = top_image["payload"].get("image_path", "")
+                image_score = top_image["score"]
+
+                # Add to context for LLM
+                image_context = f"\n\n**Relevant Image**: {caption}"
+
+                # Store for display
+                image_to_display = image_path
+                image_caption = caption
+
+                logger.info(
+                    f"Including image in context: '{caption}' "
+                    f"(score: {image_score:.3f}, path: {image_path})"
+                )
+
+            # Step 8: Build RAG prompt with both contexts
             rag_template = self.session_manager.get_active_rag_template()
 
             if PROMPT_BUILDER_AVAILABLE and rag_template:
-                # Use PromptBuilder with active template
                 try:
-                    # Get chat history for templates that support it (e.g., rag_qa_with_history)
                     chat_history = self.session_manager.get("chat_history", [])
+
+                    # Build combined context
+                    full_context = text_context + image_context
 
                     full_prompt = PromptBuilder.build_rag_prompt(
                         query=query,
-                        context=context,
+                        context=full_context,
                         template=rag_template,
-                        chat_history=chat_history,  # Pass history for templates that need it
+                        chat_history=chat_history,
                     )
-                    # Generate response with the built prompt
                     response = llm_model.generate_content(prompt=full_prompt)
                 except Exception as e:
                     logger.error(f"Error building RAG prompt: {e}")
-                    # Fallback to direct context passing
-                    response = ""
+                    response = llm_model.generate_content(
+                        prompt=query,
+                        context=text_context + image_context
+                    )
             else:
-                # Direct context passing (LLM will build prompt internally)
-                response = llm_model.generate_content(prompt=query, context=context)
+                # Direct context passing
+                response = llm_model.generate_content(
+                    prompt=query,
+                    context=text_context + image_context
+                )
 
-            # Add attribution
-            response += (
-                f"\n\n---\n*📚 Answer based on {len(retrieved_chunks)} "
-                f"retrieved document(s)*"
-            )
+            # Step 9: Add attribution
+            attribution = f"\n\n---\n*📚 Answer based on {len(retrieved_chunks)} text document(s)"
+            if image_results:
+                attribution += f" and 1 image*"
+            else:
+                attribution += "*"
 
-            # Step 7: Display response with images
-            # This will display the images directly in the chat UI
-            if unique_image_paths:
-                # Store images in session state for display in chat message
-                st.session_state.last_response_images = unique_image_paths
+            response += attribution
+
+            # Step 10: Store image for display (NEW)
+            if image_to_display:
+                st.session_state.last_response_images = [image_to_display]
+                st.session_state.last_response_image_captions = [image_caption]
             else:
                 st.session_state.last_response_images = []
+                st.session_state.last_response_image_captions = []
 
             return response
 
@@ -364,6 +416,49 @@ class ChatMainUI:
         except Exception as e:
             return f"❌ LLM Error: {str(e)}"
 
+    def _display_response_images(
+        self,
+        image_paths: List[str],
+        captions: List[str]
+    ) -> None:
+        """
+        Display images with captions below response.
+
+        Args:
+            image_paths: List of image file paths
+            captions: List of image captions (GPT-4o Mini generated)
+        """
+        import html
+
+        st.markdown("### 📸 Relevant Image")
+
+        for i, (img_path, caption) in enumerate(zip(image_paths, captions)):
+            try:
+                if self._validate_image_file(img_path):
+                    # Security: Sanitize caption to prevent XSS
+                    safe_caption = html.escape(caption)
+
+                    # Display image with caption
+                    st.image(
+                        img_path,
+                        caption=f"📌 {safe_caption}",
+                        use_column_width=True,
+                        output_format="auto"
+                    )
+
+                    # Show image metadata in expander
+                    with st.expander("ℹ️ Image Details", expanded=False):
+                        st.text(f"Path: {img_path}")
+                        st.text(f"Caption: {safe_caption}")
+
+                else:
+                    from pathlib import Path
+                    st.error(f"🖼️ Image not found or invalid: {Path(img_path).name}")
+
+            except Exception as e:
+                st.error(f"🖼️ Error displaying image: {str(e)}")
+                logger.error(f"Failed to display image {img_path}: {e}")
+
     def display_response_with_images(self, response_text: str, image_paths: List[str]) -> None:
         """Display text response with associated images below."""
         # Display text response (existing functionality)
@@ -397,11 +492,29 @@ class ChatMainUI:
     def _validate_image_file(self, image_path: str) -> bool:
         """Validate if image file is accessible and valid."""
         try:
+            from pathlib import Path
+
+            # Convert to Path object
+            img_path = Path(image_path)
+
+            # Security: Ensure path is within extracted_images directory
+            extracted_images_dir = Path("extracted_images").resolve()
+            try:
+                # Check if path is within allowed directory (Python 3.9+)
+                img_path_resolved = img_path.resolve()
+                if not img_path_resolved.is_relative_to(extracted_images_dir):
+                    logger.warning(f"Security: Image path outside allowed directory: {image_path}")
+                    return False
+            except (ValueError, AttributeError):
+                # Fallback for older Python or invalid paths
+                logger.warning(f"Security: Invalid image path: {image_path}")
+                return False
+
             return (
-                os.path.exists(image_path) and
-                os.path.isfile(image_path) and
-                os.path.getsize(image_path) > 0 and
-                image_path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'))
+                img_path.exists() and
+                img_path.is_file() and
+                img_path.stat().st_size > 0 and
+                img_path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
             )
         except Exception:
             return False

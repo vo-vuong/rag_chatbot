@@ -227,6 +227,32 @@ class SidebarNavigation:
         )
         self.session_manager.set("score_threshold", score_threshold)
 
+        # Image search settings (if image collection exists)
+        if self.session_manager.has_image_collection():
+            st.sidebar.markdown("---")
+            st.sidebar.markdown("**🖼️ Image Search**")
+
+            # Enable/disable image search
+            enable_image_search = st.sidebar.checkbox(
+                "Enable Image Search",
+                value=self.session_manager.get("enable_image_search", True),
+                help="Include images in RAG responses"
+            )
+            self.session_manager.set("enable_image_search", enable_image_search)
+
+            if enable_image_search:
+                # Image score threshold
+                image_threshold = st.sidebar.slider(
+                    "Image Score Threshold",
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=self.session_manager.get_image_score_threshold(),
+                    step=0.05,
+                    help="Minimum similarity score for images (higher = stricter)"
+                )
+                if image_threshold != self.session_manager.get_image_score_threshold():
+                    self.session_manager.set_image_score_threshold(image_threshold)
+
     def _render_advanced_settings(self) -> None:
         """Render advanced settings (collapsible)."""
         with st.sidebar.expander("🔧 Advanced Settings"):

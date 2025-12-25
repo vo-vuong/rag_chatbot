@@ -267,6 +267,55 @@ class DataUploadUI:
                     )
                     self.session_manager.set("pdf_chunk_overlap", chunk_overlap)
 
+        # Image Captioning Settings
+        with st.expander("⚙️ Advanced Image Captioning Settings", expanded=False):
+            st.markdown("### Caption Failure Handling")
+
+            # Valid failure modes
+            VALID_FAILURE_MODES = ["graceful", "strict", "skip"]
+
+            failure_mode = st.radio(
+                "What should happen if an image caption fails?",
+                options=VALID_FAILURE_MODES,
+                format_func=lambda x: {
+                    "graceful": "🛡️ Graceful (Recommended) - Use fallback caption",
+                    "strict": "⚠️ Strict - Abort entire upload",
+                    "skip": "⏭️ Skip - Ignore failed images"
+                }[x],
+                index=0,  # Default to graceful
+                help=(
+                    "**Graceful**: Failed images get fallback caption 'Image (caption unavailable)'\n\n"
+                    "**Strict**: Any caption failure aborts entire PDF upload\n\n"
+                    "**Skip**: Failed images are not stored (only successful captions)"
+                ),
+                key="caption_failure_mode_radio"
+            )
+
+            # Validate failure mode
+            if failure_mode not in VALID_FAILURE_MODES:
+                st.error(f"❌ Invalid failure mode: {failure_mode}")
+                failure_mode = "graceful"  # Fallback to safe default
+
+            self.session_manager.set("caption_failure_mode", failure_mode)
+
+            # Show warning for strict mode
+            if failure_mode == "strict":
+                st.warning(
+                    "⚠️ **Strict mode**: If any image fails to caption "
+                    "(due to API error, rate limit, etc.), the entire PDF upload will fail. "
+                    "Use only if you require 100% caption coverage."
+                )
+            elif failure_mode == "graceful":
+                st.success(
+                    "✅ **Graceful mode** (Recommended): Upload continues even if some images fail to caption. "
+                    "Failed images will have a placeholder caption."
+                )
+            elif failure_mode == "skip":
+                st.info(
+                    "ℹ️ **Skip mode**: Failed images will be skipped entirely. "
+                    "Only successfully captioned images will be stored."
+                )
+
         # Strategy information
         strategy_info = {
             "auto": "🤖 Automatically detects the best processing method based on PDF characteristics",
@@ -491,12 +540,23 @@ class DataUploadUI:
                 status_text = st.empty()
                 details_text = st.empty()
 
+                # Add cost tracking metrics
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    cost_metric = st.empty()
+                with col2:
+                    image_metric = st.empty()
+                with col3:
+                    chunk_metric = st.empty()
+
             all_chunks = []
             processing_stats = {
                 "total_files": len(uploaded_files),
                 "processed_files": 0,
                 "failed_files": 0,
                 "total_chunks": 0,
+                "total_images": 0,
+                "total_cost": 0.0,
                 "processing_time": 0.0,
             }
 
@@ -526,10 +586,36 @@ class DataUploadUI:
                             )
 
                     elif file_extension == "pdf":
-                        chunks = self._process_pdf_file(uploaded_file, details_text)
+                        chunks, pdf_metadata = self._process_pdf_file(uploaded_file, details_text)
                         if chunks:
                             all_chunks.extend(chunks)
                             processing_stats["processed_files"] += 1
+                            processing_stats["total_images"] += pdf_metadata.get("image_count", 0)
+                            processing_stats["total_cost"] += pdf_metadata.get("caption_cost", 0.0)
+
+                            # Store image data for later upload to Qdrant
+                            if "all_image_data" not in processing_stats:
+                                processing_stats["all_image_data"] = []
+                            if pdf_metadata.get("image_data"):
+                                processing_stats["all_image_data"].extend(pdf_metadata["image_data"])
+
+                            # Update metrics in real-time
+                            cost_metric.metric(
+                                "Caption Cost",
+                                f"${processing_stats['total_cost']:.4f}",
+                                help="Total GPT-4o Mini Vision API cost"
+                            )
+                            image_metric.metric(
+                                "Images",
+                                processing_stats["total_images"],
+                                help="Total images captioned"
+                            )
+                            chunk_metric.metric(
+                                "Chunks",
+                                len(all_chunks),
+                                help="Total chunks created"
+                            )
+
                             details_text.success(
                                 f"✅ PDF file processed: {len(chunks)} chunks created"
                             )
@@ -713,19 +799,27 @@ class DataUploadUI:
                 )
                 return []
 
-    def _process_pdf_file(self, uploaded_file, status_text) -> List[Dict]:
-        """Process a single PDF file using the session-managed document processor."""
+    def _process_pdf_file(self, uploaded_file, status_text) -> tuple:
+        """
+        Process a single PDF file using the session-managed document processor with enhanced progress tracking.
+
+        Returns:
+            Tuple of (chunks, metadata_dict) where metadata_dict contains:
+                - image_count: number of images processed
+                - caption_cost: total caption cost
+                - total_chunks: number of chunks created
+        """
         try:
-            status_text.info("📄 Initializing PDF processor...")
+            status_text.info("📄 Step 1/5: Initializing PDF processor...")
 
             # Check if session manager has PDF processor available
             if not self.session_manager.is_pdf_processor_available():
                 status_text.warning(
                     "⚠️ PDF processor not available. Using basic PDF processing."
                 )
-                return self._fallback_pdf_processing(uploaded_file, status_text)
+                return self._fallback_pdf_processing(uploaded_file, status_text), {}
 
-            status_text.info("🔍 Extracting content from PDF...")
+            status_text.info("📄 Step 2/5: Parsing PDF structure...")
 
             # Create temporary file for processing
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
@@ -733,16 +827,30 @@ class DataUploadUI:
                 temp_file_path = temp_file.name
 
             try:
+                status_text.info("🔍 Step 3/5: Extracting text and images from PDF...")
+
                 # Process the PDF using session-managed processor
-                with st.spinner("Processing PDF..."):
-                    result = self.session_manager.process_document_with_session(
-                        temp_file_path,
-                        languages=[self.session_manager.get("language", "en")],
-                        original_filename=uploaded_file.name,
-                    )
+                result = self.session_manager.process_document_with_session(
+                    temp_file_path,
+                    languages=[self.session_manager.get("language", "en")],
+                    original_filename=uploaded_file.name,
+                    caption_failure_mode=self.session_manager.get("caption_failure_mode", "graceful"),
+                )
 
                 if result and result.success:
-                    status_text.success("✅ PDF content extracted successfully")
+                    # Check if images were extracted and captioned
+                    image_count = result.metadata.get('total_images', 0)
+                    caption_cost = result.metadata.get('caption_total_cost', 0.0)
+
+                    if image_count > 0:
+                        status_text.info(
+                            f"🖼️ Step 4/5: Captioned {image_count} images "
+                            f"(Cost: ${caption_cost:.4f})"
+                        )
+                    else:
+                        status_text.info("📝 Step 4/5: No images found in PDF")
+
+                    status_text.info(f"✅ Step 5/5: Creating {len(result.elements)} text chunks...")
 
                     # Convert processing result to chunks
                     chunks = []
@@ -800,12 +908,26 @@ class DataUploadUI:
                         }
                         chunks.append(chunk)
 
-                    return chunks
+                    # Display final summary
+                    status_text.success(
+                        f"✅ PDF processing complete! Created {len(chunks)} chunks "
+                        f"from {result.metadata.get('total_pages', 0)} pages. "
+                        f"Images: {image_count}, Caption cost: ${caption_cost:.4f}"
+                    )
+
+                    # Return chunks, metadata, and image data for Qdrant upload
+                    metadata = {
+                        "image_count": image_count,
+                        "caption_cost": caption_cost,
+                        "total_chunks": len(chunks),
+                        "image_data": result.image_data if hasattr(result, 'image_data') else []
+                    }
+                    return chunks, metadata
 
                 else:
                     error_msg = result.error_message if result else "Unknown error"
                     status_text.error(f"❌ PDF processing failed: {error_msg}")
-                    return []
+                    return [], {}
 
             finally:
                 # Clean up temporary file
@@ -817,7 +939,7 @@ class DataUploadUI:
             logger.error(
                 f"PDF processing error for {uploaded_file.name}: {e}", exc_info=True
             )
-            return []
+            return [], {}
 
     def _fallback_pdf_processing(self, uploaded_file, status_text) -> List[Dict]:
         """Fallback PDF processing using basic libraries."""
@@ -879,6 +1001,11 @@ class DataUploadUI:
         # Create DataFrame for chunks
         chunks_df = pd.DataFrame(chunks)
         self.session_manager.set("chunks_df", chunks_df)
+
+        # Store image data for Qdrant upload
+        if stats.get("all_image_data"):
+            self.session_manager.set("pending_image_data", stats["all_image_data"])
+            logger.info(f"Stored {len(stats['all_image_data'])} images for upload")
 
         # Display sample chunks
         if len(chunks_df) > 0:
@@ -1079,10 +1206,67 @@ class DataUploadUI:
                 st.error("❌ Upload failed")
                 return
 
+            details_text.success(f"✅ Uploaded {total_chunks} text chunks to '{qdrant_manager.collection_name}'")
+
+            # Step 5.5: Upload images to image collection (if any)
+            pending_images = self.session_manager.get("pending_image_data", [])
+            images_uploaded = 0
+
+            if pending_images:
+                try:
+                    details_text.info(f"🖼️ Uploading {len(pending_images)} image captions...")
+
+                    # Use DocumentProcessor's upload_to_qdrant method
+                    from backend.document_processor import DocumentProcessor
+                    from backend.strategies.results import ProcessingResult
+
+                    # Create a minimal ProcessingResult with image data
+                    result = ProcessingResult(
+                        success=True,
+                        elements=[],  # No text elements for image-only upload
+                        image_data=pending_images
+                    )
+
+                    # Get document processor from session
+                    doc_processor = self.session_manager.get('document_processor')
+                    if not doc_processor:
+                        doc_processor = self.session_manager.initialize_document_processor()
+
+                    if doc_processor:
+                        # Upload images using document processor
+                        upload_result = doc_processor.upload_to_qdrant(
+                            processing_result=result,
+                            embeddings=[],  # No text embeddings
+                            source_file=source_description
+                        )
+
+                        images_uploaded = upload_result.get("images", 0)
+
+                        if images_uploaded > 0:
+                            details_text.success(
+                                f"✅ Uploaded {images_uploaded} image captions to 'rag_chatbot_images'"
+                            )
+                        # Clear pending images
+                        self.session_manager.set("pending_image_data", [])
+                    else:
+                        logger.warning("Document processor not available for image upload")
+
+                except Exception as img_error:
+                    logger.error(f"Failed to upload images: {img_error}")
+                    details_text.warning(
+                        f"⚠️ Text chunks uploaded successfully, but image upload failed: {str(img_error)}"
+                    )
+
             # Complete progress
             progress_bar.progress(1.0)
             status_text.markdown("**Save Complete!**")
-            details_text.success("✅ All documents saved to vector database")
+
+            if images_uploaded > 0:
+                details_text.success(
+                    f"✅ All data saved: {total_chunks} text chunks + {images_uploaded} images"
+                )
+            else:
+                details_text.success("✅ All documents saved to vector database")
 
             # Save to session with enhanced information
             self.session_manager.update(

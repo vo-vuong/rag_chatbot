@@ -89,7 +89,7 @@ DB = "DB"
 # ============================================================
 QDRANT_HOST = os.getenv('QDRANT_SERVER', 'http://localhost')
 QDRANT_PORT = int(os.getenv('QDRANT_PORT', '6333'))
-QDRANT_COLLECTION_NAME = os.getenv('QDRANT_COLLECTION_NAME', 'rag_chatbot_collection')
+QDRANT_TEXT_COLLECTION = os.getenv('QDRANT_TEXT_COLLECTION', 'rag_chatbot_text')
 
 # Search options
 VECTOR_SEARCH = "Vector Search"

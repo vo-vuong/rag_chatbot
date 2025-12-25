@@ -51,6 +51,21 @@ class ProcessingResult:
 
     Encapsulates all outcomes of a processing operation including
     extracted elements, metadata, metrics, and error information.
+
+    Attributes:
+        success: Processing success status
+        elements: List of extracted elements
+        status: Processing status enum
+        metadata: Processing metadata
+        metrics: Processing metrics
+        error_message: Error message if failed
+        error_type: Type of error
+        error_details: Additional error details
+        processing_time: Total processing time
+        timestamp: Processing timestamp
+        strategy_version: Strategy version used
+        image_paths: List of extracted image file paths
+        image_data: List of image caption data with metadata
     """
 
     # Core result data
@@ -72,6 +87,10 @@ class ProcessingResult:
     timestamp: datetime = field(default_factory=datetime.now)
     strategy_version: Optional[str] = None
 
+    # Image data
+    image_paths: Optional[List[str]] = None
+    image_data: Optional[List[Dict[str, Any]]] = None
+
     def __post_init__(self):
         """Post-initialization processing."""
         if self.error_message:
@@ -83,6 +102,12 @@ class ProcessingResult:
         # Update processing time in metrics
         if self.processing_time is not None:
             self.metrics.processing_time = self.processing_time
+
+        # Initialize image data lists
+        if self.image_paths is None:
+            self.image_paths = []
+        if self.image_data is None:
+            self.image_data = []
 
     @property
     def element_count(self) -> int:

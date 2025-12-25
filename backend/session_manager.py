@@ -4,6 +4,7 @@ Implements Singleton pattern for centralized state management.
 """
 
 import logging
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
 
@@ -23,6 +24,7 @@ class SessionManager:
     """Singleton class to manage Streamlit session state."""
 
     _instance = None
+    _image_manager_lock = threading.Lock()  # Security: Thread-safe image manager initialization
 
     def __new__(cls):
         if cls._instance is None:
@@ -106,6 +108,14 @@ class SessionManager:
             'search_option': 'Vector Search',
             'number_docs_retrieval': 3,
             'score_threshold': 0.5,  # Minimum similarity score
+            # ============================================================
+            # IMAGE SEARCH CONFIGURATION
+            # ============================================================
+            'image_collection_name': 'rag_chatbot_images',  # Image collection
+            'image_score_threshold': 0.6,  # Higher threshold for images
+            'image_top_k': 1,  # Return only best match
+            'image_qdrant_manager': None,  # Lazy initialization
+            'enable_image_search': True,  # Enable image search
             # ============================================================
             # CHAT HISTORY
             # ============================================================
@@ -290,6 +300,8 @@ class SessionManager:
                 "infer_table_structure": True,
                 "extract_images": True,  # Enable image extraction by default
                 "chunk_after_extraction": False,  # Handle chunking separately
+                "caption_failure_mode": self.get("caption_failure_mode", "graceful"),
+                "openai_api_key": self.get("openai_api_key") or __import__('os').getenv("OPENAI_API_KEY"),
             },
             "ocr": {
                 "languages": [self.get("language", "en")],
@@ -563,6 +575,81 @@ class SessionManager:
             self.set_pdf_error(f"processing_{file_name}", str(e))
             logger.error(f"Document processing failed for {file_name}: {e}")
             return None
+
+    # ============================================================
+    # IMAGE COLLECTION MANAGEMENT
+    # ============================================================
+
+    def get_image_collection_name(self) -> str:
+        """Get image collection name."""
+        return st.session_state.get("image_collection_name", "rag_chatbot_images")
+
+    def set_image_collection_name(self, name: str) -> None:
+        """Set image collection name and reset manager."""
+        st.session_state["image_collection_name"] = name
+        st.session_state["image_qdrant_manager"] = None  # Reset manager
+        logger.info(f"Image collection name set to: {name}")
+
+    def get_image_score_threshold(self) -> float:
+        """Get image search score threshold."""
+        return st.session_state.get("image_score_threshold", 0.6)
+
+    def set_image_score_threshold(self, threshold: float) -> None:
+        """Set image search score threshold."""
+        # Security: Validate input type
+        if not isinstance(threshold, (int, float)):
+            raise TypeError(f"Threshold must be a number, got {type(threshold).__name__}")
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError("Threshold must be between 0.0 and 1.0")
+        st.session_state["image_score_threshold"] = float(threshold)
+        logger.info(f"Image score threshold set to: {threshold}")
+
+    def get_image_qdrant_manager(self) -> Optional['QdrantManager']:
+        """
+        Get or create QdrantManager for image collection.
+
+        Returns:
+            QdrantManager instance or None if not configured
+        """
+        # Double-checked locking for thread safety
+        if st.session_state.get("image_qdrant_manager") is None:
+            with self._image_manager_lock:
+                # Check again after acquiring lock
+                if st.session_state.get("image_qdrant_manager") is None:
+                    try:
+                        from backend.vector_db.qdrant_manager import QdrantManager
+
+                        qdrant_host = self.get("qdrant_host", "localhost")
+                        qdrant_port = self.get("qdrant_port", 6333)
+                        collection_name = self.get_image_collection_name()
+
+                        image_manager = QdrantManager(
+                            collection_name=collection_name,
+                            host=qdrant_host,
+                            port=qdrant_port
+                        )
+
+                        # Check if collection exists
+                        if not image_manager.collection_exists():
+                            logger.warning(
+                                f"Image collection '{collection_name}' does not exist. "
+                                "Image search disabled until PDFs with images uploaded."
+                            )
+                            return None
+
+                        st.session_state["image_qdrant_manager"] = image_manager
+                        logger.info(f"Image QdrantManager initialized: {collection_name}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to initialize image QdrantManager: {e}")
+                        return None
+
+        return st.session_state.get("image_qdrant_manager")
+
+    def has_image_collection(self) -> bool:
+        """Check if image collection exists."""
+        manager = self.get_image_qdrant_manager()
+        return manager is not None and manager.collection_exists()
 
     # ============================================================
     # VALIDATION & CHECK METHODS

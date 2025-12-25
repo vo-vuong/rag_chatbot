@@ -11,7 +11,7 @@ import pandas as pd
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from config.constants import QDRANT_COLLECTION_NAME, QDRANT_HOST, QDRANT_PORT
+from config.constants import QDRANT_TEXT_COLLECTION, QDRANT_HOST, QDRANT_PORT
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,7 +25,7 @@ class QdrantManager:
         self,
         host: str = QDRANT_HOST,
         port: int = QDRANT_PORT,
-        collection_name: str = QDRANT_COLLECTION_NAME,
+        collection_name: str = QDRANT_TEXT_COLLECTION,
         timeout: int = 60,
     ):
         self.host = host

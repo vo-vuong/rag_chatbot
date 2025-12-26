@@ -16,6 +16,7 @@ import pikepdf
 from unstructured.partition.pdf import partition_pdf
 from unstructured.partition.utils.constants import PartitionStrategy
 
+from ..chunking.hybrid_chunker import HybridChunker
 from ..chunking.semantic_chunker import SemanticChunker
 from ..ocr.tesseract_ocr import get_tesseract_ocr
 from ..utils.image_storage import ImageStorageUtility
@@ -73,7 +74,10 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self.ocr = get_tesseract_ocr(languages=ocr_languages)
 
         # Initialize chunker with OpenAI API key
-        openai_api_key = self.config.get("openai_api_key")
+        # Check both root level and pdf section for API key
+        openai_api_key = self.config.get("openai_api_key") or self.config.get(
+            "pdf", {}
+        ).get("openai_api_key")
         if not openai_api_key:
             raise ValueError("openai_api_key required in config for semantic chunking")
 
@@ -84,7 +88,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             from config.constants import (
                 DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
                 DEFAULT_SEMANTIC_BUFFER_SIZE,
-                DEFAULT_SEMANTIC_EMBEDDING_MODEL
+                DEFAULT_SEMANTIC_EMBEDDING_MODEL,
             )
 
             # Get chunking config
@@ -104,19 +108,21 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 openai_api_key=openai_api_key,
                 breakpoint_percentile=percentile,
                 buffer_size=buffer_size,
-                embedding_model=embedding_model
+                embedding_model=embedding_model,
             )
 
         # Set processing parameters from config
-        self.processing_strategy = self.config.get("strategy", DEFAULT_PDF_STRATEGY)
-        self.infer_table_structure = self.config.get(
+        # Get pdf-specific config section
+        pdf_config = self.config.get("pdf", {})
+        self.processing_strategy = pdf_config.get("strategy", DEFAULT_PDF_STRATEGY)
+        self.infer_table_structure = pdf_config.get(
             "infer_table_structure", DEFAULT_INFER_TABLE_STRUCTURE
         )
-        self.extract_images = self.config.get("extract_images", DEFAULT_EXTRACT_IMAGES)
-        self.chunk_after_extraction = self.config.get("chunk_after_extraction", True)
+        self.extract_images = pdf_config.get("extract_images", DEFAULT_EXTRACT_IMAGES)
+        self.chunk_after_extraction = pdf_config.get("chunk_after_extraction", True)
 
         # Initialize image storage (template instance - actual storage uses doc-specific instances)
-        image_storage_path = self.config.get(
+        image_storage_path = pdf_config.get(
             "image_storage_path", DEFAULT_IMAGE_STORAGE_PATH
         )
         self.image_storage = ImageStorageUtility(
@@ -131,26 +137,29 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         self.ocr_used = False
 
         # Initialize ImageCaptioner if API key available
-        self.openai_api_key = self.config.get("openai_api_key")
+        self.openai_api_key = openai_api_key  # Use the key we already retrieved
         self.captioner = None
-        self.caption_failure_mode = self.config.get("caption_failure_mode", "graceful")
+        self.caption_failure_mode = pdf_config.get("caption_failure_mode", "graceful")
 
         if self.openai_api_key and self.extract_images:
             try:
                 from backend.vision.image_captioner import ImageCaptioner
+
                 self.captioner = ImageCaptioner(
                     api_key=self.openai_api_key,
-                    model=self.config.get("vision_model", "gpt-4o-mini"),
-                    max_tokens=self.config.get("vision_max_tokens", 100),
-                    temperature=self.config.get("vision_temperature", 0.3),
-                    detail_mode=self.config.get("vision_detail_mode", "low")
+                    model=pdf_config.get("vision_model", "gpt-4o-mini"),
+                    max_tokens=pdf_config.get("vision_max_tokens", 100),
+                    temperature=pdf_config.get("vision_temperature", 0.3),
+                    detail_mode=pdf_config.get("vision_detail_mode", "low"),
                 )
                 self._logger.info("ImageCaptioner initialized for PDF processing")
             except Exception as e:
                 self._logger.warning(f"ImageCaptioner not available: {e}")
                 self.captioner = None
         else:
-            self._logger.info("Image captioning disabled (no API key or extract_images=False)")
+            self._logger.info(
+                "Image captioning disabled (no API key or extract_images=False)"
+            )
 
         self._logger.info(
             f"PDF processing strategy initialized with OCR available: {self.ocr.is_configured}"
@@ -330,7 +339,12 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                                 # Get min/max x,y from points
                                 x_coords = [p[0] for p in points]
                                 y_coords = [p[1] for p in points]
-                                bbox = (min(x_coords), min(y_coords), max(x_coords), max(y_coords))
+                                bbox = (
+                                    min(x_coords),
+                                    min(y_coords),
+                                    max(x_coords),
+                                    max(y_coords),
+                                )
                             else:
                                 bbox = None
                         elif isinstance(raw_bbox, (list, tuple)) and len(raw_bbox) == 4:
@@ -386,9 +400,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
 
         return image_stats
 
-    def _caption_extracted_images(
-        self, image_paths: List[str], document_name: str
-    ) -> List[Dict[str, Any]]:
+    def _caption_extracted_images(self, image_paths: List[str], document_name: str = "") -> List[Dict[str, Any]]:
         """
         Generate captions for extracted images using Vision API.
 
@@ -399,16 +411,21 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
         Returns:
             List of dictionaries containing image data with captions
         """
-        from backend.vision.image_captioner import ImageCaptioningError
         import hashlib
+
+        from backend.vision.image_captioner import ImageCaptioningError
 
         image_data = []
 
         if not self.captioner or not image_paths:
-            self._logger.info("Skipping image captioning (captioner not available or no images)")
+            self._logger.info(
+                "Skipping image captioning (captioner not available or no images)"
+            )
             return image_data
 
-        self._logger.info(f"Starting caption generation for {len(image_paths)} images...")
+        self._logger.info(
+            f"Starting caption generation for {len(image_paths)} images..."
+        )
 
         for idx, image_path in enumerate(image_paths):
             try:
@@ -418,6 +435,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
 
                 # Get image metadata from path
                 from PIL import Image
+
                 img = Image.open(image_path)
                 width, height = img.size
                 format_name = img.format
@@ -428,19 +446,21 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 # Caption the image
                 caption, cost = self.captioner.caption_image(image_path)
 
-                image_data.append({
-                    "image_path": str(image_path),
-                    "caption": caption,
-                    "image_hash": image_hash,
-                    "page_number": page_number,
-                    "image_metadata": {
-                        "width": width,
-                        "height": height,
-                        "format": format_name or "PNG",
-                        "optimized_size_bytes": Path(image_path).stat().st_size
-                    },
-                    "cost": cost
-                })
+                image_data.append(
+                    {
+                        "image_path": str(image_path),
+                        "caption": caption,
+                        "image_hash": image_hash,
+                        "page_number": page_number,
+                        "image_metadata": {
+                            "width": width,
+                            "height": height,
+                            "format": format_name or "PNG",
+                            "optimized_size_bytes": Path(image_path).stat().st_size,
+                        },
+                        "cost": cost,
+                    }
+                )
 
                 self._logger.debug(
                     f"Captioned image {idx+1}/{len(image_paths)}: "
@@ -464,22 +484,27 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                         with open(image_path, 'rb') as f:
                             image_hash = hashlib.md5(f.read()).hexdigest()
                         from PIL import Image
+
                         img = Image.open(image_path)
                         width, height = img.size
 
-                        image_data.append({
-                            "image_path": str(image_path),
-                            "caption": "Image (caption unavailable)",
-                            "image_hash": image_hash,
-                            "page_number": idx + 1,
-                            "image_metadata": {
-                                "width": width,
-                                "height": height,
-                                "format": img.format or "PNG",
-                                "optimized_size_bytes": Path(image_path).stat().st_size
-                            },
-                            "cost": 0.0
-                        })
+                        image_data.append(
+                            {
+                                "image_path": str(image_path),
+                                "caption": "Image (caption unavailable)",
+                                "image_hash": image_hash,
+                                "page_number": idx + 1,
+                                "image_metadata": {
+                                    "width": width,
+                                    "height": height,
+                                    "format": img.format or "PNG",
+                                    "optimized_size_bytes": Path(image_path)
+                                    .stat()
+                                    .st_size,
+                                },
+                                "cost": 0.0,
+                            }
+                        )
                     except Exception as e:
                         self._logger.error(f"Failed to create fallback caption: {e}")
                 elif self.caption_failure_mode == "skip":
@@ -488,7 +513,9 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                     )
                     # Don't add to image_data
                 else:
-                    raise ValueError(f"Invalid caption_failure_mode: {self.caption_failure_mode}")
+                    raise ValueError(
+                        f"Invalid caption_failure_mode: {self.caption_failure_mode}"
+                    )
 
             except Exception as e:
                 self._logger.error(f"Failed to process/caption image {image_path}: {e}")
@@ -627,13 +654,41 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
             else:
                 image_paths = []
 
-            # Apply semantic chunking if requested
+            # Apply chunking if requested
             if self.chunk_after_extraction and elements:
-                chunk_result = self.chunker.chunk_elements(
-                    elements, languages, image_paths=image_paths
-                )
-                elements = chunk_result.chunks
-                processing_info["chunking_stats"] = chunk_result.stats
+                # Get chunking config
+                config = self.config
+                use_hybrid = config.get("chunking", {}).get("use_hybrid", False)
+
+                if use_hybrid:
+                    # Phase 03: Use HybridChunker (full pipeline)
+                    logger.info("Using HybridChunker (hybrid: layout + semantic)")
+                    hybrid_config = {
+                        "openai_api_key": config.get("openai_api_key")
+                        or config.get("pdf", {}).get("openai_api_key"),
+                        "preprocessing": config.get("hybrid", {}).get(
+                            "preprocessing", {}
+                        ),
+                        "layout": config.get("hybrid", {}).get("layout", {}),
+                        "semantic": config.get("chunking", {}),  # Reuse semantic config
+                        "metadata": config.get("hybrid", {}).get("metadata", {}),
+                    }
+                    hybrid_chunker = HybridChunker(hybrid_config)
+                    chunk_result = hybrid_chunker.chunk_elements(
+                        elements, languages, image_paths=image_paths
+                    )
+                    elements = chunk_result.chunks
+                    processing_info["chunking_stats"] = chunk_result.stats
+                    processing_info["chunker_used"] = "hybrid"
+                else:
+                    # Fallback: Use SemanticChunker (Phase 01)
+                    logger.info("Using SemanticChunker (fallback mode)")
+                    chunk_result = self.chunker.chunk_elements(
+                        elements, languages, image_paths=image_paths
+                    )
+                    elements = chunk_result.chunks
+                    processing_info["chunking_stats"] = chunk_result.stats
+                    processing_info["chunker_used"] = "semantic"
 
             # Calculate processing time
             processing_time = time.time() - start_time
@@ -683,7 +738,7 @@ class PDFProcessingStrategy(DocumentProcessingStrategy):
                 metadata=metadata,
                 processing_time=processing_time,
                 image_paths=image_stats.get("image_paths", []),
-                image_data=image_data
+                image_data=image_data,
             )
 
         except Exception as e:

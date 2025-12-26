@@ -253,7 +253,7 @@ class DataUploadUI:
                 format_func=lambda x: {
                     "graceful": "🛡️ Graceful (Recommended) - Use fallback caption",
                     "strict": "⚠️ Strict - Abort entire upload",
-                    "skip": "⏭️ Skip - Ignore failed images"
+                    "skip": "⏭️ Skip - Ignore failed images",
                 }[x],
                 index=0,  # Default to graceful
                 help=(
@@ -261,7 +261,7 @@ class DataUploadUI:
                     "**Strict**: Any caption failure aborts entire PDF upload\n\n"
                     "**Skip**: Failed images are not stored (only successful captions)"
                 ),
-                key="caption_failure_mode_radio"
+                key="caption_failure_mode_radio",
             )
 
             # Validate failure mode
@@ -559,34 +559,40 @@ class DataUploadUI:
                             )
 
                     elif file_extension == "pdf":
-                        chunks, pdf_metadata = self._process_pdf_file(uploaded_file, details_text)
+                        chunks, pdf_metadata = self._process_pdf_file(
+                            uploaded_file, details_text
+                        )
                         if chunks:
                             all_chunks.extend(chunks)
                             processing_stats["processed_files"] += 1
-                            processing_stats["total_images"] += pdf_metadata.get("image_count", 0)
-                            processing_stats["total_cost"] += pdf_metadata.get("caption_cost", 0.0)
+                            processing_stats["total_images"] += pdf_metadata.get(
+                                "image_count", 0
+                            )
+                            processing_stats["total_cost"] += pdf_metadata.get(
+                                "caption_cost", 0.0
+                            )
 
                             # Store image data for later upload to Qdrant
                             if "all_image_data" not in processing_stats:
                                 processing_stats["all_image_data"] = []
                             if pdf_metadata.get("image_data"):
-                                processing_stats["all_image_data"].extend(pdf_metadata["image_data"])
+                                processing_stats["all_image_data"].extend(
+                                    pdf_metadata["image_data"]
+                                )
 
                             # Update metrics in real-time
                             cost_metric.metric(
                                 "Caption Cost",
                                 f"${processing_stats['total_cost']:.4f}",
-                                help="Total GPT-4o Mini Vision API cost"
+                                help="Total GPT-4o Mini Vision API cost",
                             )
                             image_metric.metric(
                                 "Images",
                                 processing_stats["total_images"],
-                                help="Total images captioned"
+                                help="Total images captioned",
                             )
                             chunk_metric.metric(
-                                "Chunks",
-                                len(all_chunks),
-                                help="Total chunks created"
+                                "Chunks", len(all_chunks), help="Total chunks created"
                             )
 
                             details_text.success(
@@ -807,7 +813,9 @@ class DataUploadUI:
                     temp_file_path,
                     languages=[self.session_manager.get("language", "en")],
                     original_filename=uploaded_file.name,
-                    caption_failure_mode=self.session_manager.get("caption_failure_mode", "graceful"),
+                    caption_failure_mode=self.session_manager.get(
+                        "caption_failure_mode", "graceful"
+                    ),
                 )
 
                 if result and result.success:
@@ -823,7 +831,9 @@ class DataUploadUI:
                     else:
                         status_text.info("📝 Step 4/5: No images found in PDF")
 
-                    status_text.info(f"✅ Step 5/5: Creating {len(result.elements)} text chunks...")
+                    status_text.info(
+                        f"✅ Step 5/5: Creating {len(result.elements)} text chunks..."
+                    )
 
                     # Convert processing result to chunks
                     chunks = []
@@ -832,7 +842,9 @@ class DataUploadUI:
                         chunk_image_paths = []
 
                         # Check 1: Look for image_paths in result metadata (from PDF processing)
-                        if hasattr(result, 'metadata') and isinstance(result.metadata, dict):
+                        if hasattr(result, 'metadata') and isinstance(
+                            result.metadata, dict
+                        ):
                             result_image_paths = result.metadata.get('image_paths', [])
                             if result_image_paths:
                                 chunk_image_paths.extend(result_image_paths)
@@ -842,14 +854,18 @@ class DataUploadUI:
                             if hasattr(element.metadata, 'image_paths'):
                                 chunk_image_paths.extend(element.metadata.image_paths)
                             elif isinstance(element.metadata, dict):
-                                element_image_paths = element.metadata.get('image_paths', [])
+                                element_image_paths = element.metadata.get(
+                                    'image_paths', []
+                                )
                                 if element_image_paths:
                                     chunk_image_paths.extend(element_image_paths)
 
                             # Check 3: Look for individual image_path in metadata
                             if hasattr(element.metadata, 'image_path'):
                                 if element.metadata.image_path:
-                                    chunk_image_paths.append(element.metadata.image_path)
+                                    chunk_image_paths.append(
+                                        element.metadata.image_path
+                                    )
                             elif isinstance(element.metadata, dict):
                                 element_image_path = element.metadata.get('image_path')
                                 if element_image_path:
@@ -893,7 +909,9 @@ class DataUploadUI:
                         "image_count": image_count,
                         "caption_cost": caption_cost,
                         "total_chunks": len(chunks),
-                        "image_data": result.image_data if hasattr(result, 'image_data') else []
+                        "image_data": (
+                            result.image_data if hasattr(result, 'image_data') else []
+                        ),
                     }
                     return chunks, metadata
 
@@ -1179,7 +1197,9 @@ class DataUploadUI:
                 st.error("❌ Upload failed")
                 return
 
-            details_text.success(f"✅ Uploaded {total_chunks} text chunks to '{qdrant_manager.collection_name}'")
+            details_text.success(
+                f"✅ Uploaded {total_chunks} text chunks to '{qdrant_manager.collection_name}'"
+            )
 
             # Step 5.5: Upload images to image collection (if any)
             pending_images = self.session_manager.get("pending_image_data", [])
@@ -1187,30 +1207,33 @@ class DataUploadUI:
 
             if pending_images:
                 try:
-                    details_text.info(f"🖼️ Uploading {len(pending_images)} image captions...")
+                    details_text.info(
+                        f"🖼️ Uploading {len(pending_images)} image captions..."
+                    )
 
                     # Use DocumentProcessor's upload_to_qdrant method
-                    from backend.document_processor import DocumentProcessor
                     from backend.strategies.results import ProcessingResult
 
                     # Create a minimal ProcessingResult with image data
                     result = ProcessingResult(
                         success=True,
                         elements=[],  # No text elements for image-only upload
-                        image_data=pending_images
+                        image_data=pending_images,
                     )
 
                     # Get document processor from session
                     doc_processor = self.session_manager.get('document_processor')
                     if not doc_processor:
-                        doc_processor = self.session_manager.initialize_document_processor()
+                        doc_processor = (
+                            self.session_manager.initialize_document_processor()
+                        )
 
                     if doc_processor:
                         # Upload images using document processor
                         upload_result = doc_processor.upload_to_qdrant(
                             processing_result=result,
                             embeddings=[],  # No text embeddings
-                            source_file=source_description
+                            source_file=source_description,
                         )
 
                         images_uploaded = upload_result.get("images", 0)
@@ -1222,7 +1245,9 @@ class DataUploadUI:
                         # Clear pending images
                         self.session_manager.set("pending_image_data", [])
                     else:
-                        logger.warning("Document processor not available for image upload")
+                        logger.warning(
+                            "Document processor not available for image upload"
+                        )
 
                 except Exception as img_error:
                     logger.error(f"Failed to upload images: {img_error}")

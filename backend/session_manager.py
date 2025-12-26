@@ -18,7 +18,21 @@ from config.constants import (
     DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
     DEFAULT_SEMANTIC_BUFFER_SIZE,
     DEFAULT_SEMANTIC_EMBEDDING_MODEL,
+    HYBRID_COMBINE_TEXT_UNDER_N_CHARS,
+    HYBRID_EXTRACT_IMAGES,
+    HYBRID_FIX_SPACING,
+    HYBRID_IMAGE_ASSOCIATION_MODE,
+    HYBRID_INFER_TABLE_STRUCTURE,
+    HYBRID_MAX_CHARACTERS,
+    HYBRID_MULTIPAGE_SECTIONS,
+    HYBRID_NEW_AFTER_N_CHARS,
+    HYBRID_OVERLAP,
+    HYBRID_OVERLAP_ALL,
+    HYBRID_PARTITION_STRATEGY,
+    HYBRID_PRESERVE_COORDINATES,
+    HYBRID_SPACING_PATTERN,
     PAGE_CHAT,
+    USE_HYBRID_CHUNKING,
 )
 
 # Configure logging
@@ -295,7 +309,7 @@ class SessionManager:
 
     def get_pdf_config(self) -> Dict[str, Any]:
         """
-        Get current PDF processing configuration.
+        Get current PDF processing configuration including hybrid chunking.
 
         Returns:
             Dictionary containing PDF processing configuration
@@ -315,6 +329,7 @@ class SessionManager:
                 "enabled": True,  # OCR is always available for strategies that need it
             },
             "chunking": {
+                "use_hybrid": USE_HYBRID_CHUNKING,
                 "breakpoint_percentile": self.get(
                     "semantic_percentile", DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE
                 ),
@@ -324,6 +339,29 @@ class SessionManager:
                 "embedding_model": self.get(
                     "semantic_embedding_model", DEFAULT_SEMANTIC_EMBEDDING_MODEL
                 ),
+            },
+            "hybrid": {
+                "partition": {
+                    "strategy": HYBRID_PARTITION_STRATEGY,
+                    "infer_table_structure": HYBRID_INFER_TABLE_STRUCTURE,
+                    "extract_images": HYBRID_EXTRACT_IMAGES,
+                },
+                "preprocessing": {
+                    "fix_spacing": HYBRID_FIX_SPACING,
+                    "spacing_pattern": HYBRID_SPACING_PATTERN,
+                },
+                "layout": {
+                    "max_characters": HYBRID_MAX_CHARACTERS,
+                    "new_after_n_chars": HYBRID_NEW_AFTER_N_CHARS,
+                    "combine_text_under_n_chars": HYBRID_COMBINE_TEXT_UNDER_N_CHARS,
+                    "multipage_sections": HYBRID_MULTIPAGE_SECTIONS,
+                    "overlap": HYBRID_OVERLAP,
+                    "overlap_all": HYBRID_OVERLAP_ALL,
+                },
+                "metadata": {
+                    "preserve_coordinates": HYBRID_PRESERVE_COORDINATES,
+                    "image_association_mode": HYBRID_IMAGE_ASSOCIATION_MODE,
+                },
             },
         }
 
@@ -516,7 +554,6 @@ class SessionManager:
     def process_document_with_session(
         self,
         file_path: Union[str, Path],
-        file_content: Optional[bytes] = None,
         original_filename: Optional[str] = None,
         **kwargs,
     ) -> Optional['ProcessingResult']:  # ProcessingResult from document_processor
@@ -525,7 +562,6 @@ class SessionManager:
 
         Args:
             file_path: Path to the document
-            file_content: Optional file content bytes
             original_filename: Original filename to override metadata
             **kwargs: Additional processing parameters
 

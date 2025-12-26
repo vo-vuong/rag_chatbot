@@ -9,13 +9,13 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
+
 from config.constants import (
     DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
     DEFAULT_SEMANTIC_BUFFER_SIZE,
-    DEFAULT_SEMANTIC_EMBEDDING_MODEL
+    DEFAULT_SEMANTIC_EMBEDDING_MODEL,
 )
 
-from .chunking.semantic_chunker import SemanticChunker
 from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
 from .strategies import PDFProcessingStrategy
 from .strategies.csv_strategy import CSVProcessingStrategy
@@ -45,7 +45,7 @@ DEFAULT_CONFIG = {
     "chunking": {
         "breakpoint_percentile": DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
         "buffer_size": DEFAULT_SEMANTIC_BUFFER_SIZE,
-        "embedding_model": DEFAULT_SEMANTIC_EMBEDDING_MODEL
+        "embedding_model": DEFAULT_SEMANTIC_EMBEDDING_MODEL,
     },
 }
 
@@ -91,25 +91,11 @@ class DocumentProcessor:
             ocr_config = self.config.get("ocr", {})
             chunking_config = self.config.get("chunking", {})
 
-            # TODO Phase 02: Re-enable chunker creation with new SemanticChunker
-            # Create chunker instance
-            # chunker = SemanticChunker(
-            #     chunk_size=chunking_config.get("chunk_size", 500),
-            #     chunk_overlap=chunking_config.get("chunk_overlap", 50),
-            #     max_characters=chunking_config.get("max_characters", 1500),
-            #     combine_text_under_n_chars=chunking_config.get(
-            #         "combine_text_under_n_chars", 1000
-            #     ),
-            #     new_after_n_chars=chunking_config.get("new_after_n_chars", 3000),
-            #     multipage_sections=chunking_config.get("multipage_sections", True),
-            #     enforce_strict=chunking_config.get("enforce_strict", False),
-            # )
-
-            # Create PDF strategy
+            # Create PDF strategy with FULL config (includes chunking & hybrid sections)
             pdf_strategy = PDFProcessingStrategy(
-                config=pdf_config,
+                config=self.config,  # Pass full config, not just pdf section
                 ocr_languages=ocr_config.get("languages", ["en", "vi"]),
-                chunker=None,  # TODO Phase 02: Pass chunker here
+                chunker=None,  # Chunker created internally based on config
             )
 
             self.strategies[".pdf"] = pdf_strategy
@@ -190,18 +176,21 @@ class DocumentProcessor:
 
             # Pass openai_api_key to strategy if needed (for re-initialization with API key)
             if openai_api_key and file_extension == ".pdf":
-                # Update PDF strategy config with API key
-                pdf_config = self.config.get("pdf", {}).copy()
-                chunking_config = self.config.get("chunking", {}).copy()
-                pdf_config["openai_api_key"] = openai_api_key
-                pdf_config["chunking"] = chunking_config
+                # Update full config with API key (preserve all sections)
+                updated_config = self.config.copy()
+                updated_config["pdf"] = updated_config.get("pdf", {}).copy()
+                updated_config["pdf"]["openai_api_key"] = openai_api_key
 
-                # Reinitialize PDF strategy with API key
+                # Also ensure chunking and hybrid sections are preserved
+                updated_config["chunking"] = self.config.get("chunking", {})
+                updated_config["hybrid"] = self.config.get("hybrid", {})
+
+                # Reinitialize PDF strategy with API key and full config
                 ocr_config = self.config.get("ocr", {})
                 strategy = PDFProcessingStrategy(
-                    config=pdf_config,
+                    config=updated_config,  # Pass full config with all sections
                     ocr_languages=ocr_config.get("languages", ["en", "vi"]),
-                    chunker=None  # Will be created in strategy with API key
+                    chunker=None,  # Will be created in strategy with API key
                 )
 
             # Process document with strategy
@@ -422,7 +411,7 @@ class DocumentProcessor:
         embeddings: List[List[float]],
         source_file: str,
         text_collection: str = "rag_chatbot_text",
-        image_collection: str = "rag_chatbot_images"
+        image_collection: str = "rag_chatbot_images",
     ) -> Dict[str, int]:
         """
         Upload text chunks and image captions to separate Qdrant collections.
@@ -440,8 +429,9 @@ class DocumentProcessor:
         Raises:
             Exception: If upload fails
         """
-        from .vector_db.qdrant_manager import QdrantManager
         import pandas as pd
+
+        from .vector_db.qdrant_manager import QdrantManager
 
         upload_counts = {"text_chunks": 0, "images": 0}
 
@@ -451,7 +441,7 @@ class DocumentProcessor:
                 text_manager = QdrantManager(
                     collection_name=text_collection,
                     host=self.config.get("qdrant_host", "localhost"),
-                    port=self.config.get("qdrant_port", 6333)
+                    port=self.config.get("qdrant_port", 6333),
                 )
 
                 # Ensure collection exists with correct dimension
@@ -459,25 +449,37 @@ class DocumentProcessor:
                 text_manager.ensure_collection(dimension=vector_dim)
 
                 # Prepare chunks DataFrame
-                chunks_df = pd.DataFrame([
-                    {
-                        "chunk": chunk.text if hasattr(chunk, 'text') else str(chunk),
-                        "page_number": chunk.metadata.page_number if hasattr(chunk, 'metadata') else 0,
-                        "language": chunk.metadata.get("language", "unknown") if hasattr(chunk, 'metadata') else "unknown"
-                    }
-                    for chunk in processing_result.elements
-                ])
+                chunks_df = pd.DataFrame(
+                    [
+                        {
+                            "chunk": (
+                                chunk.text if hasattr(chunk, 'text') else str(chunk)
+                            ),
+                            "page_number": (
+                                chunk.metadata.page_number
+                                if hasattr(chunk, 'metadata')
+                                else 0
+                            ),
+                            "language": (
+                                chunk.metadata.get("language", "unknown")
+                                if hasattr(chunk, 'metadata')
+                                else "unknown"
+                            ),
+                        }
+                        for chunk in processing_result.elements
+                    ]
+                )
 
                 # Upload to Qdrant
                 success = text_manager.add_documents(
-                    chunks_df=chunks_df,
-                    embeddings=embeddings,
-                    source_file=source_file
+                    chunks_df=chunks_df, embeddings=embeddings, source_file=source_file
                 )
 
                 if success:
                     upload_counts["text_chunks"] = len(chunks_df)
-                    self.logger.info(f"Uploaded {len(chunks_df)} text chunks to '{text_collection}'")
+                    self.logger.info(
+                        f"Uploaded {len(chunks_df)} text chunks to '{text_collection}'"
+                    )
                 else:
                     raise Exception("Text chunk upload failed")
 
@@ -503,7 +505,7 @@ class DocumentProcessor:
                 image_manager = QdrantManager(
                     collection_name=image_collection,
                     host=self.config.get("qdrant_host", "localhost"),
-                    port=self.config.get("qdrant_port", 6333)
+                    port=self.config.get("qdrant_port", 6333),
                 )
 
                 # Ensure collection exists with correct dimension
@@ -511,27 +513,33 @@ class DocumentProcessor:
                 image_manager.ensure_collection(dimension=vector_dim)
 
                 # Prepare images DataFrame
-                images_df = pd.DataFrame([
-                    {
-                        "chunk": img["caption"],  # Store caption in "chunk" field for consistency
-                        "caption": img["caption"],
-                        "image_path": img["image_path"],
-                        "image_hash": img["image_hash"],
-                        "page_number": img["page_number"],
-                        "width": img["image_metadata"]["width"],
-                        "height": img["image_metadata"]["height"],
-                        "format": img["image_metadata"]["format"],
-                        "optimized_size_bytes": img["image_metadata"]["optimized_size_bytes"],
-                        "caption_cost": img["cost"]
-                    }
-                    for img in processing_result.image_data
-                ])
+                images_df = pd.DataFrame(
+                    [
+                        {
+                            "chunk": img[
+                                "caption"
+                            ],  # Store caption in "chunk" field for consistency
+                            "caption": img["caption"],
+                            "image_path": img["image_path"],
+                            "image_hash": img["image_hash"],
+                            "page_number": img["page_number"],
+                            "width": img["image_metadata"]["width"],
+                            "height": img["image_metadata"]["height"],
+                            "format": img["image_metadata"]["format"],
+                            "optimized_size_bytes": img["image_metadata"][
+                                "optimized_size_bytes"
+                            ],
+                            "caption_cost": img["cost"],
+                        }
+                        for img in processing_result.image_data
+                    ]
+                )
 
                 # Upload to Qdrant
                 success = image_manager.add_documents(
                     chunks_df=images_df,
                     embeddings=caption_embeddings,
-                    source_file=source_file
+                    source_file=source_file,
                 )
 
                 if success:
@@ -541,7 +549,9 @@ class DocumentProcessor:
                     )
 
                     # Log total caption cost
-                    total_cost = sum(img["cost"] for img in processing_result.image_data)
+                    total_cost = sum(
+                        img["cost"] for img in processing_result.image_data
+                    )
                     self.logger.info(f"Total caption cost: ${total_cost:.4f}")
                 else:
                     raise Exception("Image caption upload failed")
@@ -557,13 +567,15 @@ class DocumentProcessor:
         """Get embedding strategy from session manager or create new one."""
         from backend.embeddings.openai_embeddings import OpenAIEmbeddingStrategy
 
-        api_key = self.config.get("openai_api_key") or self.config.get("pdf", {}).get("openai_api_key")
+        api_key = self.config.get("openai_api_key") or self.config.get("pdf", {}).get(
+            "openai_api_key"
+        )
         if not api_key:
             raise ValueError("OpenAI API key required for embedding")
 
         return OpenAIEmbeddingStrategy(
             api_key=api_key,
-            model=self.config.get("embedding_model", "text-embedding-3-small")
+            model=self.config.get("embedding_model", "text-embedding-3-small"),
         )
 
 

@@ -61,6 +61,38 @@ DEFAULT_SEMANTIC_BUFFER_SIZE = 500  # characters
 DEFAULT_SEMANTIC_EMBEDDING_MODEL = "text-embedding-3-small"
 
 # ============================================================
+# HYBRID CHUNKING CONFIGURATION
+# ============================================================
+# Feature flag for hybrid chunking
+USE_HYBRID_CHUNKING = True
+
+# Stage 1: Partition (unstructured)
+HYBRID_PARTITION_STRATEGY = "hi_res"
+HYBRID_INFER_TABLE_STRUCTURE = True
+HYBRID_EXTRACT_IMAGES = True
+
+# Stage 2: Preprocessing
+HYBRID_FIX_SPACING = True
+HYBRID_SPACING_PATTERN = r'([.!?])([A-ZẮẰẲẴẶĂÂẦẤẨẪẬÊỀẾỂỄỆÔỒỐỔỖỘƠỜỚỞỠỢƯỪỨỬỮỰ])'
+
+# Stage 3: Layout Chunking (chunk_by_title)
+HYBRID_MAX_CHARACTERS = 1500
+HYBRID_NEW_AFTER_N_CHARS = 1000
+HYBRID_COMBINE_TEXT_UNDER_N_CHARS = 500
+HYBRID_MULTIPAGE_SECTIONS = False
+HYBRID_OVERLAP = 150
+HYBRID_OVERLAP_ALL = False
+
+# Stage 4: Semantic Chunking
+# Uses DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE = 60
+# Uses DEFAULT_SEMANTIC_BUFFER_SIZE = 500
+# Uses DEFAULT_SEMANTIC_EMBEDDING_MODEL = "text-embedding-3-small"
+
+# Stage 5: Metadata Enrichment
+HYBRID_PRESERVE_COORDINATES = True
+HYBRID_IMAGE_ASSOCIATION_MODE = "page_based"  # "page_based", "spatial", "semantic"
+
+# ============================================================
 # CHAT ROLES
 # ============================================================
 USER = "user"

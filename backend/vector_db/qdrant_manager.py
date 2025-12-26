@@ -254,13 +254,13 @@ class QdrantManager:
             #         )]
             #     )
 
-            search_results = self.client.search(
+            search_results = self.client.query_points(
                 collection_name=self.collection_name,
-                query_vector=query_vector,
+                query=query_vector,
                 query_filter=search_filter,
                 limit=top_k,
                 score_threshold=score_threshold,
-            )
+            ).points
 
             results = []
             for hit in search_results:
@@ -585,15 +585,15 @@ class QdrantManager:
 
             # Use a simple search with a dummy vector to get all points
             dummy_vector = [0.1] * vector_dim
-            search_result = self.client.search(
+            search_result = self.client.query_points(
                 collection_name=collection_name,
-                query_vector=dummy_vector,
+                query=dummy_vector,
                 limit=limit,
                 query_filter=search_filter,
                 with_payload=True,
                 with_vectors=False,  # Don't need vectors for data table
                 score_threshold=0.0,  # Get all points regardless of similarity
-            )
+            ).points
 
             points = []
             for hit in search_result:

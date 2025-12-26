@@ -162,6 +162,12 @@ class ChatMainUI:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
+                # Display images if available in message
+                if message.get("image_paths"):
+                    image_paths = message.get("image_paths", [])
+                    image_captions = message.get("image_captions", [])
+                    self._display_response_images(image_paths, image_captions)
+
     def _handle_chat_input(self) -> None:
         """Handle user chat input."""
         prompt = st.chat_input("Ask me anything...")
@@ -184,14 +190,14 @@ class ChatMainUI:
                     image_captions = st.session_state.get("last_response_image_captions", [])
 
                     # Display response
-                    st.markdown("### 🤖 Assistant Response")
                     st.markdown(response)
 
-                    # Display images if available (NEW/ENHANCED)
+                    # Display images if available
                     if image_paths and self.session_manager.get("chat_mode") == "rag":
                         self._display_response_images(image_paths, image_captions)
 
-                    self._add_message("assistant", response)
+                    # Save message with images to chat history
+                    self._add_message("assistant", response, image_paths, image_captions)
 
                     # Clear stored images after display
                     if "last_response_images" in st.session_state:
@@ -199,10 +205,17 @@ class ChatMainUI:
                     if "last_response_image_captions" in st.session_state:
                         del st.session_state.last_response_image_captions
 
-    def _add_message(self, role: str, content: str) -> None:
-        """Add message to chat history."""
+    def _add_message(self, role: str, content: str, image_paths: List[str] = None, image_captions: List[str] = None) -> None:
+        """Add message to chat history with optional images."""
         chat_history = self.session_manager.get("chat_history", [])
-        chat_history.append({"role": role, "content": content})
+        message = {"role": role, "content": content}
+
+        # Add image data if available
+        if image_paths:
+            message["image_paths"] = image_paths
+            message["image_captions"] = image_captions or []
+
+        chat_history.append(message)
         self.session_manager.set("chat_history", chat_history)
 
     def _generate_response(self, query: str) -> str:
@@ -442,7 +455,7 @@ class ChatMainUI:
                     st.image(
                         img_path,
                         caption=f"📌 {safe_caption}",
-                        use_column_width=True,
+                        width=600,
                         output_format="auto"
                     )
 
@@ -479,7 +492,7 @@ class ChatMainUI:
                     st.image(
                         img_path,
                         caption=f"Extracted from document (Image {i+1})",
-                        use_column_width=True,
+                        width=600,
                         output_format="auto"
                     )
                 else:

@@ -1,21 +1,15 @@
-"""
-Document chunking strategies package.
-
-This package provides various chunking strategies for processing documents
-into manageable pieces for vector storage and retrieval.
-"""
+"""Document chunking strategies package."""
 
 from .chunk_result import ChunkResult, EmptyChunkResult
 from .csv_grouping_chunker import CSVGroupingChunker
-from .semantic_chunker import SemanticChunker
-from .layout_chunker import LayoutChunker
-from .hybrid_chunker import HybridChunker
+from .docling_chunker import DoclingChunker
+from .semantic_chunker import SemanticChunker, TextElement
 
 __all__ = [
+    "DoclingChunker",
     "SemanticChunker",
-    "LayoutChunker",
-    "HybridChunker",
+    "TextElement",
     "ChunkResult",
     "EmptyChunkResult",
-    "CSVGroupingChunker"
+    "CSVGroupingChunker",
 ]

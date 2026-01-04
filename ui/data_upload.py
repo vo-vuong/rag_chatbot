@@ -26,7 +26,7 @@ from config.constants import (
     DEFAULT_CSV_CONFIG,
     EN,
     ENGLISH,
-    PDF_PROCESSING_STRATEGIES,
+    PDF_PROCESSING_MODES,
     PDF_SIZE_LIMIT_MB,
     PDF_SIZE_WARNING_MB,
     VI,
@@ -218,20 +218,20 @@ class DataUploadUI:
     def _render_pdf_processing_options(self) -> None:
         """Render PDF processing configuration options."""
         # Processing Strategy Selection
-        st.info("💡 **PDF Processing Strategy** - Choose how to process your PDF files")
+        st.info("💡 **PDF Processing Mode** - Choose how to process your PDF files")
 
-        # Get available strategies
-        strategy_options = list(PDF_PROCESSING_STRATEGIES.keys())
+        # Get available modes
+        mode_options = list(PDF_PROCESSING_MODES.keys())
 
-        strategy_choice = st.selectbox(
-            "Processing Strategy:",
-            options=strategy_options,
+        mode_choice = st.selectbox(
+            "Processing Mode:",
+            options=mode_options,
             index=0,  # Default to first option
-            help="Auto: Automatically selects the best strategy based on PDF content",
-            key="pdf_strategy_selectbox",
+            help="Auto: Automatically selects the best mode based on PDF content",
+            key="pdf_mode_selectbox",
         )
 
-        self.session_manager.set("pdf_processing_strategy", strategy_choice)
+        self.session_manager.set("pdf_processing_mode", mode_choice)
 
         # Semantic chunking is now ALWAYS enabled using TRUE embedding-based chunking
         # Configuration managed automatically via backend/strategies/pdf_strategy.py
@@ -289,17 +289,15 @@ class DataUploadUI:
                     "Only successfully captioned images will be stored."
                 )
 
-        # Strategy information
-        strategy_info = {
+        # Mode information
+        mode_info = {
             "auto": "🤖 Automatically detects the best processing method based on PDF characteristics",
-            "ocr_only": "🔍 Forces OCR processing for image-based PDFs and scanned documents",
-            "hi_res": "🔬 High-resolution processing with OCR for image-based PDFs",
-            "fast": "⚡ Skips OCR for faster processing of text-only PDFs",
-            "fallback": "🛡️ Uses basic PDF processing as fallback for problematic files",
+            "ocr": "🔍 Forces OCR processing for scanned documents and image-based PDFs",
+            "no_ocr": "⚡ Skips OCR for faster processing of text-only PDFs",
         }
 
         st.info(
-            f"**{PDF_PROCESSING_STRATEGIES[strategy_choice]}**: {strategy_info[strategy_choice]}"
+            f"**{PDF_PROCESSING_MODES[mode_choice]}**: {mode_info[mode_choice]}"
         )
 
     def _render_csv_column_selection(self, csv_files: List) -> Dict[str, Any]:

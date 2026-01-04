@@ -1,19 +1,17 @@
-"""
-Document processing strategies package.
-
-This package provides a pluggable architecture for processing different
-document types with standardized interfaces and result handling.
-"""
+"""Document processing strategies package."""
 
 from pathlib import Path
 from typing import Dict, List, Optional, Type
 
+from .csv_strategy import CSVProcessingStrategy
 from .interfaces import DocumentProcessingStrategy
 from .results import ProcessingMetrics, ProcessingResult, ProcessingStatus
 
 __all__ = [
     # Interfaces
     "DocumentProcessingStrategy",
+    # Strategies
+    "CSVProcessingStrategy",
     # Results and data structures
     "ProcessingResult",
     "ProcessingStatus",
@@ -21,21 +19,23 @@ __all__ = [
 ]
 
 # Strategy registry for dynamic loading
-STRATEGY_REGISTRY: Dict[str, Type] = {}
+STRATEGY_REGISTRY: Dict[str, Type] = {
+    ".csv": CSVProcessingStrategy,
+}
 
-# Try to import PDF strategy (may fail if dependencies missing)
+# Import Docling PDF strategy (primary)
 try:
-    from .pdf_strategy import PDFProcessingStrategy
+    from .docling_pdf_strategy import DoclingPDFStrategy
 
-    STRATEGY_REGISTRY[".pdf"] = PDFProcessingStrategy
-    __all__.append("PDFProcessingStrategy")
+    STRATEGY_REGISTRY[".pdf"] = DoclingPDFStrategy
+    __all__.append("DoclingPDFStrategy")
 except ImportError as e:
-    # PDF strategy not available due to missing dependencies
+    # Docling strategy not available due to missing dependencies
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.warning(f"PDF strategy not available: {e}")
-    PDFProcessingStrategy = None
+    logger.warning(f"Docling PDF strategy not available: {e}")
+    DoclingPDFStrategy = None
 
 
 def get_strategy_for_file(

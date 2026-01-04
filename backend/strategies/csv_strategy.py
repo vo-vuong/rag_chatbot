@@ -16,7 +16,8 @@ import pandas as pd
 
 from backend.chunking import CSVGroupingChunker
 from backend.errors import CSVEncodingError, CSVParsingError, CSVProcessingError
-from backend.strategies import DocumentProcessingStrategy, ProcessingResult
+from backend.strategies.interfaces import DocumentProcessingStrategy
+from backend.strategies.results import ProcessingResult
 from backend.utils import CSVOptimizer, CSVPerformanceMonitor
 
 # Configure logging

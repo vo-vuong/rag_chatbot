@@ -5,14 +5,14 @@ TRUE semantic chunking using LangChain SemanticChunker with embedding similarity
 import logging
 import re
 import time
-from typing import Any, List, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 from langchain_experimental.text_splitter import (
     SemanticChunker as LangChainSemanticChunker,
 )
 from langchain_openai import OpenAIEmbeddings
-from unstructured.documents.elements import Element, Text
 
 from backend.chunking import ChunkResult, EmptyChunkResult
 from config.constants import (
@@ -22,6 +22,14 @@ from config.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class TextElement:
+    """Simple text element for chunking (replaces unstructured Element)."""
+
+    text: str
+    metadata: Dict[str, Any] = field(default_factory=dict)
 
 
 class SemanticChunker:
@@ -79,7 +87,7 @@ class SemanticChunker:
 
     def chunk_elements(
         self,
-        elements: List[Element],
+        elements: List[TextElement],
         language: Optional[str] = None,
         image_paths: Optional[List[str]] = None,
         **kwargs,
@@ -88,7 +96,7 @@ class SemanticChunker:
         Chunk elements using TRUE semantic similarity.
 
         Args:
-            elements: List of unstructured elements to chunk
+            elements: List of TextElement objects to chunk
             language: Document language (for metadata)
             image_paths: Image paths (preserved in metadata)
             **kwargs: Additional parameters (ignored)
@@ -155,7 +163,7 @@ class SemanticChunker:
             logger.error(f"Semantic chunking failed: {e}", exc_info=True)
             raise
 
-    def _extract_texts(self, elements: List[Element]) -> List[str]:
+    def _extract_texts(self, elements: List[TextElement]) -> List[str]:
         """Extract text from elements with spacing fix."""
         texts = []
         for elem in elements:
@@ -175,35 +183,31 @@ class SemanticChunker:
 
     def _convert_to_elements(
         self, langchain_docs: List[Any], language: Optional[str]
-    ) -> List[Element]:
-        """Convert LangChain Documents to unstructured Elements."""
+    ) -> List[TextElement]:
+        """Convert LangChain Documents to TextElement objects."""
         elements = []
         for i, doc in enumerate(langchain_docs):
-            # Create Text element
-            elem = Text(text=doc.page_content)
-
-            # Add metadata
-            elem.metadata = {
-                "chunk_index": i,
-                "chunker_type": "semantic",
-                "chunking_strategy": "embedding_similarity",
-                "language": language,
-                **doc.metadata,  # Preserve any existing metadata
-            }
-
+            elem = TextElement(
+                text=doc.page_content,
+                metadata={
+                    "chunk_index": i,
+                    "chunker_type": "semantic",
+                    "chunking_strategy": "embedding_similarity",
+                    "language": language,
+                    **doc.metadata,
+                },
+            )
             elements.append(elem)
 
         return elements
 
     def _associate_images(
         self,
-        chunks: List[Element],
+        chunks: List[TextElement],
         image_paths: List[str],
-        original_elements: List[Element],
-    ) -> List[Element]:
+        original_elements: List[TextElement],
+    ) -> List[TextElement]:
         """Associate images with chunks based on page correlation."""
-        # Simple approach: distribute images across chunks
-        # TODO: Smarter association based on page_number metadata
         for chunk in chunks:
             chunk.metadata["has_images"] = False
             chunk.metadata["image_paths"] = []
@@ -213,8 +217,8 @@ class SemanticChunker:
 
     def _generate_stats(
         self,
-        original_elements: List[Element],
-        chunks: List[Element],
+        original_elements: List[TextElement],
+        chunks: List[TextElement],
         start_time: float,
         image_paths: List[str],
     ) -> dict:

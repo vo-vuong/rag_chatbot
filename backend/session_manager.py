@@ -18,21 +18,8 @@ from config.constants import (
     DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
     DEFAULT_SEMANTIC_BUFFER_SIZE,
     DEFAULT_SEMANTIC_EMBEDDING_MODEL,
-    HYBRID_COMBINE_TEXT_UNDER_N_CHARS,
-    HYBRID_EXTRACT_IMAGES,
-    HYBRID_FIX_SPACING,
-    HYBRID_IMAGE_ASSOCIATION_MODE,
-    HYBRID_INFER_TABLE_STRUCTURE,
-    HYBRID_MAX_CHARACTERS,
-    HYBRID_MULTIPAGE_SECTIONS,
-    HYBRID_NEW_AFTER_N_CHARS,
-    HYBRID_OVERLAP,
-    HYBRID_OVERLAP_ALL,
-    HYBRID_PARTITION_STRATEGY,
-    HYBRID_PRESERVE_COORDINATES,
-    HYBRID_SPACING_PATTERN,
+    DOCLING_CONFIG,
     PAGE_CHAT,
-    USE_HYBRID_CHUNKING,
 )
 
 # Configure logging
@@ -114,7 +101,7 @@ class SessionManager:
             # ============================================================
             # PDF PROCESSING CONFIGURATION
             # ============================================================
-            'pdf_processing_strategy': 'auto',  # auto, ocr, fast, fallback
+            'pdf_processing_mode': 'auto',  # auto, ocr, no_ocr
             # NOTE: Semantic chunking is ALWAYS enabled (embedding-based)
             # Chunking configuration managed via chunking section below
             'pdf_processing_progress': {},  # Progress tracking for PDF processing
@@ -309,27 +296,22 @@ class SessionManager:
 
     def get_pdf_config(self) -> Dict[str, Any]:
         """
-        Get current PDF processing configuration including hybrid chunking.
+        Get current PDF processing configuration using Docling.
 
         Returns:
             Dictionary containing PDF processing configuration
         """
         return {
             "pdf": {
-                "strategy": self.get("pdf_processing_strategy", "auto"),
-                "infer_table_structure": True,
-                "extract_images": True,  # Enable image extraction by default
-                "chunk_after_extraction": True,  # Enable semantic chunking
+                "mode": self.get("pdf_processing_mode", "auto"),
                 "caption_failure_mode": self.get("caption_failure_mode", "graceful"),
                 "openai_api_key": self.get("openai_api_key")
                 or os.getenv("OPENAI_API_KEY"),
             },
-            "ocr": {
-                "languages": [self.get("language", "en")],
-                "enabled": True,  # OCR is always available for strategies that need it
-            },
+            "ocr": DOCLING_CONFIG.get("ocr", {}),
+            "table": DOCLING_CONFIG.get("table", {}),
             "chunking": {
-                "use_hybrid": USE_HYBRID_CHUNKING,
+                **DOCLING_CONFIG.get("chunking", {}),
                 "breakpoint_percentile": self.get(
                     "semantic_percentile", DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE
                 ),
@@ -340,29 +322,8 @@ class SessionManager:
                     "semantic_embedding_model", DEFAULT_SEMANTIC_EMBEDDING_MODEL
                 ),
             },
-            "hybrid": {
-                "partition": {
-                    "strategy": HYBRID_PARTITION_STRATEGY,
-                    "infer_table_structure": HYBRID_INFER_TABLE_STRUCTURE,
-                    "extract_images": HYBRID_EXTRACT_IMAGES,
-                },
-                "preprocessing": {
-                    "fix_spacing": HYBRID_FIX_SPACING,
-                    "spacing_pattern": HYBRID_SPACING_PATTERN,
-                },
-                "layout": {
-                    "max_characters": HYBRID_MAX_CHARACTERS,
-                    "new_after_n_chars": HYBRID_NEW_AFTER_N_CHARS,
-                    "combine_text_under_n_chars": HYBRID_COMBINE_TEXT_UNDER_N_CHARS,
-                    "multipage_sections": HYBRID_MULTIPAGE_SECTIONS,
-                    "overlap": HYBRID_OVERLAP,
-                    "overlap_all": HYBRID_OVERLAP_ALL,
-                },
-                "metadata": {
-                    "preserve_coordinates": HYBRID_PRESERVE_COORDINATES,
-                    "image_association_mode": HYBRID_IMAGE_ASSOCIATION_MODE,
-                },
-            },
+            "acceleration": DOCLING_CONFIG.get("acceleration", {}),
+            "images_scale": DOCLING_CONFIG.get("images_scale", 2.0),
         }
 
     def set_pdf_config(self, config: Dict[str, Any]) -> None:
@@ -375,8 +336,8 @@ class SessionManager:
         # Update relevant session state variables
         if "pdf" in config:
             pdf_config = config["pdf"]
-            if "strategy" in pdf_config:
-                self.set("pdf_processing_strategy", pdf_config["strategy"])
+            if "mode" in pdf_config:
+                self.set("pdf_processing_mode", pdf_config["mode"])
 
         # OCR configuration is now handled automatically by strategies
         # No longer need to store OCR enabled state in session

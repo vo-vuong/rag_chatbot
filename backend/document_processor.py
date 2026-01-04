@@ -14,10 +14,11 @@ from config.constants import (
     DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
     DEFAULT_SEMANTIC_BUFFER_SIZE,
     DEFAULT_SEMANTIC_EMBEDDING_MODEL,
+    DOCLING_CONFIG,
 )
 
 from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
-from .strategies import PDFProcessingStrategy
+from .strategies.docling_pdf_strategy import DoclingPDFStrategy
 from .strategies.csv_strategy import CSVProcessingStrategy
 from .strategies.interfaces import DocumentProcessingStrategy
 from .strategies.results import ProcessingResult
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # Supported file types and their corresponding strategies
 SUPPORTED_FILE_TYPES: Dict[str, type[DocumentProcessingStrategy]] = {
-    ".pdf": PDFProcessingStrategy,
+    ".pdf": DoclingPDFStrategy,
 }
 
 # Default processing configurations
@@ -86,38 +87,48 @@ class DocumentProcessor:
     def _initialize_strategies(self) -> None:
         """Initialize document processing strategies."""
         try:
-            # Initialize PDF strategy
             pdf_config = self.config.get("pdf", {})
             ocr_config = self.config.get("ocr", {})
-            chunking_config = self.config.get("chunking", {})
 
-            # Create PDF strategy with FULL config (includes chunking & hybrid sections)
-            pdf_strategy = PDFProcessingStrategy(
-                config=self.config,  # Pass full config, not just pdf section
-                ocr_languages=ocr_config.get("languages", ["en", "vi"]),
-                chunker=None,  # Chunker created internally based on config
-            )
+            # Initialize Docling strategy
+            self._init_docling_strategy(pdf_config, ocr_config)
 
-            self.strategies[".pdf"] = pdf_strategy
-            self.logger.info("PDF processing strategy initialized")
-
-            # Initialize CSV strategy - use local import
-            try:
-                csv_config = self.config.get("csv", {})
-                self.strategies[".csv"] = CSVProcessingStrategy(config=csv_config)
-
-                # Add CSV to supported file types globally
-                SUPPORTED_FILE_TYPES[".csv"] = CSVProcessingStrategy
-
-                self.logger.info("CSV processing strategy initialized")
-            except ImportError as e:
-                self.logger.warning(f"CSV processing strategy not available: {e}")
-            except Exception as e:
-                self.logger.error(f"Failed to initialize CSV strategy: {e}")
+            # Initialize CSV strategy
+            self._init_csv_strategy()
 
         except Exception as e:
-            self.logger.error(f"Failed to initialize processing strategies: {e}")
+            self.logger.error(f"Failed to initialize strategies: {e}")
             raise
+
+    def _init_docling_strategy(self, pdf_config: dict, ocr_config: dict) -> None:
+        """Initialize Docling PDF strategy."""
+        # Merge config with defaults
+        docling_config = {**DOCLING_CONFIG, **self.config.get("docling", {})}
+
+        # Override OCR languages from ocr_config if provided
+        if "languages" in ocr_config:
+            docling_config["ocr"]["languages"] = ocr_config["languages"]
+
+        # Create Docling strategy
+        docling_strategy = DoclingPDFStrategy(
+            config={
+                **self.config,
+                "docling": docling_config,
+            }
+        )
+
+        self.strategies[".pdf"] = docling_strategy
+        self.logger.info("Docling PDF strategy initialized")
+
+    def _init_csv_strategy(self) -> None:
+        """Initialize CSV strategy."""
+        try:
+            csv_config = self.config.get("csv", {})
+            self.strategies[".csv"] = CSVProcessingStrategy(config=csv_config)
+            SUPPORTED_FILE_TYPES[".csv"] = CSVProcessingStrategy
+            self.logger.info("CSV strategy initialized")
+        except Exception as e:
+            self.logger.warning(f"CSV strategy unavailable: {e}")
 
     def process_document(
         self,
@@ -176,22 +187,23 @@ class DocumentProcessor:
 
             # Pass openai_api_key to strategy if needed (for re-initialization with API key)
             if openai_api_key and file_extension == ".pdf":
-                # Update full config with API key (preserve all sections)
-                updated_config = self.config.copy()
-                updated_config["pdf"] = updated_config.get("pdf", {}).copy()
-                updated_config["pdf"]["openai_api_key"] = openai_api_key
+                # Update config with API key
+                updated_config = {**self.config, "openai_api_key": openai_api_key}
+                updated_config["pdf"] = {
+                    **updated_config.get("pdf", {}),
+                    "openai_api_key": openai_api_key,
+                }
 
-                # Also ensure chunking and hybrid sections are preserved
-                updated_config["chunking"] = self.config.get("chunking", {})
-                updated_config["hybrid"] = self.config.get("hybrid", {})
-
-                # Reinitialize PDF strategy with API key and full config
+                # Merge Docling config
+                docling_config = {**DOCLING_CONFIG, **self.config.get("docling", {})}
                 ocr_config = self.config.get("ocr", {})
-                strategy = PDFProcessingStrategy(
-                    config=updated_config,  # Pass full config with all sections
-                    ocr_languages=ocr_config.get("languages", ["en", "vi"]),
-                    chunker=None,  # Will be created in strategy with API key
-                )
+                if "languages" in ocr_config:
+                    docling_config["ocr"]["languages"] = ocr_config["languages"]
+
+                updated_config["docling"] = docling_config
+
+                # Create fresh Docling strategy with API key
+                strategy = DoclingPDFStrategy(config=updated_config)
 
             # Process document with strategy
             result = strategy.extract_elements(

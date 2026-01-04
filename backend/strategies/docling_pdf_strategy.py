@@ -31,8 +31,11 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         self.converter = None  # Lazy initialization
         self._converter_initialized = False
 
-        # Image captioning setup (reuse existing)
-        self.openai_api_key = self.config.get("openai_api_key")
+        # Image captioning setup - check both top-level and nested pdf config
+        self.openai_api_key = (
+            self.config.get("openai_api_key")
+            or self.config.get("pdf", {}).get("openai_api_key")
+        )
         self.captioner = None
 
         # Processing state
@@ -180,8 +183,8 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             # Extract images
             image_data = self._extract_images(doc, file_path)
 
-            # Caption images if captioner available
-            if self.captioner and image_data:
+            # Caption images (uses Vision API if available, else fallback)
+            if image_data:
                 image_data = self._caption_images(image_data)
 
             # Convert to elements
@@ -311,6 +314,9 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
 
         Security: File paths are validated to prevent path traversal attacks.
         """
+        # Convert AnyUrl (Pydantic) to string for Docling 2.x compatibility
+        uri = str(uri)
+
         if uri.startswith("data:"):
             # Base64: data:image/png;base64,<data>
             _, data = uri.split(",", 1)

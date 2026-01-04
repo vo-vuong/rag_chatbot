@@ -532,6 +532,7 @@ class DocumentProcessor:
                                 "caption"
                             ],  # Store caption in "chunk" field for consistency
                             "caption": img["caption"],
+                            "docling_caption": img.get("docling_caption", ""),
                             "image_path": img["image_path"],
                             "image_hash": img["image_hash"],
                             "page_number": img["page_number"],
@@ -542,6 +543,7 @@ class DocumentProcessor:
                                 "optimized_size_bytes"
                             ],
                             "caption_cost": img["cost"],
+                            "bbox": img.get("bbox"),
                         }
                         for img in processing_result.image_data
                     ]

@@ -346,7 +346,10 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         """Extract page number from Docling item provenance."""
         if hasattr(item, "prov") and item.prov:
             prov = item.prov[0] if isinstance(item.prov, list) else item.prov
-            if hasattr(prov, "page"):
+            # Docling uses 'page_no' not 'page'
+            if hasattr(prov, "page_no"):
+                return prov.page_no
+            elif hasattr(prov, "page"):
                 return prov.page
         return None
 

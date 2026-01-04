@@ -533,16 +533,18 @@ class SessionManager:
             # Update statistics based on result
             if result.success:
                 self.update_processing_progress(file_name, 100, "completed")
+                # Get metrics from ProcessingMetrics object
+                metrics = result.metrics if hasattr(result, 'metrics') else None
                 self.update_processing_statistics(
                     file_name,
                     {
                         'success': True,
                         'chunks_created': len(result.elements),
-                        'strategy_used': result.metadata.get(
-                            'strategy_used', 'unknown'
+                        'strategy_used': (
+                            metrics.strategy_used if metrics else 'unknown'
                         ),
-                        'ocr_used': result.metadata.get('ocr_used', False),
-                        'total_pages': result.metadata.get('total_pages', 0),
+                        'ocr_used': metrics.ocr_used if metrics else False,
+                        'total_pages': metrics.pages_processed if metrics else 0,
                     },
                 )
             else:

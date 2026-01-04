@@ -220,13 +220,19 @@ class DoclingChunker:
                 doc_items = chunk.meta.doc_items
                 if doc_items:
                     first_item = doc_items[0]
+                    # Extract element type/label from doc_items
+                    if hasattr(first_item, "label"):
+                        metadata["element_type"] = str(first_item.label)
                     if hasattr(first_item, "prov") and first_item.prov:
                         prov = (
                             first_item.prov[0]
                             if isinstance(first_item.prov, list)
                             else first_item.prov
                         )
-                        if hasattr(prov, "page"):
+                        # Docling uses 'page_no' not 'page'
+                        if hasattr(prov, "page_no"):
+                            metadata["page_number"] = prov.page_no
+                        elif hasattr(prov, "page"):
                             metadata["page_number"] = prov.page
                         if hasattr(prov, "bbox"):
                             metadata["bbox"] = {
@@ -235,6 +241,9 @@ class DoclingChunker:
                                 "right": prov.bbox.r,
                                 "bottom": prov.bbox.b,
                             }
+
+            # Set chunk_type based on content
+            metadata["chunk_type"] = "hybrid"  # Docling HybridChunker output
 
             # Token count
             try:

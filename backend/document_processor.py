@@ -453,7 +453,13 @@ class DocumentProcessor:
                 vector_dim = len(embeddings[0])
                 text_manager.ensure_collection(dimension=vector_dim)
 
-                # Prepare chunks DataFrame
+                # Extract processing metrics for all chunks
+                metrics = processing_result.metrics
+                total_pages = metrics.pages_processed if metrics else 0
+                ocr_used = metrics.ocr_used if metrics else False
+                processing_strategy = metrics.strategy_used if metrics else "unknown"
+
+                # Prepare chunks DataFrame with full metadata
                 chunks_df = pd.DataFrame(
                     [
                         {
@@ -461,14 +467,29 @@ class DocumentProcessor:
                                 chunk.text if hasattr(chunk, 'text') else str(chunk)
                             ),
                             "page_number": (
-                                chunk.metadata.page_number
+                                chunk.metadata.get("page_number")
                                 if hasattr(chunk, 'metadata')
-                                else 0
+                                else None
                             ),
                             "language": (
                                 chunk.metadata.get("language", "unknown")
                                 if hasattr(chunk, 'metadata')
                                 else "unknown"
+                            ),
+                            # Add processing-level metadata
+                            "processing_strategy": processing_strategy,
+                            "ocr_used": ocr_used,
+                            "total_pages": total_pages,
+                            # Add chunk-level metadata
+                            "chunk_type": (
+                                chunk.metadata.get("chunk_type", "text")
+                                if hasattr(chunk, 'metadata')
+                                else "text"
+                            ),
+                            "element_type": (
+                                chunk.metadata.get("element_type", "text")
+                                if hasattr(chunk, 'metadata')
+                                else "text"
                             ),
                         }
                         for chunk in processing_result.elements

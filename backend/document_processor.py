@@ -11,9 +11,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from config.constants import (
-    DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
-    DEFAULT_SEMANTIC_BUFFER_SIZE,
-    DEFAULT_SEMANTIC_EMBEDDING_MODEL,
     DOCLING_CONFIG,
 )
 
@@ -43,11 +40,7 @@ DEFAULT_CONFIG = {
     "ocr": {
         "languages": ["en", "vi"],  # Default OCR languages
     },
-    "chunking": {
-        "breakpoint_percentile": DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
-        "buffer_size": DEFAULT_SEMANTIC_BUFFER_SIZE,
-        "embedding_model": DEFAULT_SEMANTIC_EMBEDDING_MODEL,
-    },
+    "docling": DOCLING_CONFIG,  # Docling PDF processing and chunking config
 }
 
 

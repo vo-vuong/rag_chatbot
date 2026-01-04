@@ -15,9 +15,6 @@ import streamlit as st
 from backend.document_processor import DocumentProcessor, ProcessingResult
 from backend.prompts.prompt_manager import PromptManager
 from config.constants import (
-    DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE,
-    DEFAULT_SEMANTIC_BUFFER_SIZE,
-    DEFAULT_SEMANTIC_EMBEDDING_MODEL,
     DOCLING_CONFIG,
     PAGE_CHAT,
 )
@@ -310,18 +307,7 @@ class SessionManager:
             },
             "ocr": DOCLING_CONFIG.get("ocr", {}),
             "table": DOCLING_CONFIG.get("table", {}),
-            "chunking": {
-                **DOCLING_CONFIG.get("chunking", {}),
-                "breakpoint_percentile": self.get(
-                    "semantic_percentile", DEFAULT_SEMANTIC_BREAKPOINT_PERCENTILE
-                ),
-                "buffer_size": self.get(
-                    "semantic_buffer_size", DEFAULT_SEMANTIC_BUFFER_SIZE
-                ),
-                "embedding_model": self.get(
-                    "semantic_embedding_model", DEFAULT_SEMANTIC_EMBEDDING_MODEL
-                ),
-            },
+            "chunking": DOCLING_CONFIG.get("chunking", {}),
             "acceleration": DOCLING_CONFIG.get("acceleration", {}),
             "images_scale": DOCLING_CONFIG.get("images_scale", 2.0),
         }

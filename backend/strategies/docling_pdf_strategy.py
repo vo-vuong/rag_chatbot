@@ -187,8 +187,14 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             if image_data:
                 image_data = self._caption_images(image_data)
 
-            # Convert to elements
-            elements = self._convert_to_elements(doc)
+            # Get image paths for chunker
+            image_paths = [img["image_path"] for img in image_data]
+
+            # Chunk document using Docling HybridChunker (token-aware)
+            chunking_config = self.docling_config.get("chunking", {})
+            elements, chunking_metadata = self._chunk_document(
+                doc, image_paths, chunking_config
+            )
 
             # Build ProcessingResult
             processing_time = time.time() - start_time
@@ -201,6 +207,7 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                     "processor": "docling",
                     "file_name": file_path.name,
                     "conversion_status": str(result.status),
+                    "chunking": chunking_metadata,
                 },
                 metrics=ProcessingMetrics(
                     processing_time=processing_time,
@@ -210,7 +217,7 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                     strategy_used="docling",
                 ),
                 processing_time=processing_time,
-                image_paths=[img["image_path"] for img in image_data],
+                image_paths=image_paths,
                 image_data=image_data,
             )
 
@@ -355,6 +362,48 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                     "bottom": prov.bbox.b,
                 }
         return None
+
+    def _chunk_document(
+        self,
+        doc: Any,
+        image_paths: List[str],
+        chunking_config: Dict[str, Any],
+    ) -> tuple:
+        """
+        Chunk document using Docling HybridChunker.
+
+        Args:
+            doc: Docling DoclingDocument
+            image_paths: List of image paths
+            chunking_config: Chunking configuration
+
+        Returns:
+            Tuple of (elements, metadata)
+        """
+        from backend.chunking.docling_chunker import DoclingChunker
+
+        try:
+            chunker = DoclingChunker(config=chunking_config)
+            chunk_result = chunker.chunk_document(doc, image_paths)
+
+            if chunk_result.chunks:
+                logger.info(
+                    f"DoclingChunker created {len(chunk_result.chunks)} chunks "
+                    f"(tokenizer: {chunking_config.get('tokenizer_model', 'default')})"
+                )
+                return chunk_result.chunks, chunk_result.metadata
+            else:
+                # Fallback to simple element extraction if chunking fails
+                logger.warning(
+                    "DoclingChunker returned no chunks, falling back to element extraction"
+                )
+                elements = self._convert_to_elements(doc)
+                return elements, {"chunker_type": "fallback", "reason": "no_chunks"}
+
+        except Exception as e:
+            logger.warning(f"DoclingChunker failed: {e}, falling back to element extraction")
+            elements = self._convert_to_elements(doc)
+            return elements, {"chunker_type": "fallback", "error": str(e)}
 
     def _convert_to_elements(self, doc) -> List[Any]:
         """Convert Docling document to element list for compatibility."""

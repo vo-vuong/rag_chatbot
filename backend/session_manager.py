@@ -99,7 +99,6 @@ class SessionManager:
             # PDF PROCESSING CONFIGURATION
             # ============================================================
             'pdf_processing_mode': 'auto',  # auto, ocr, no_ocr
-            # NOTE: Semantic chunking is ALWAYS enabled (embedding-based)
             # Chunking configuration managed via chunking section below
             'pdf_processing_progress': {},  # Progress tracking for PDF processing
             'uploaded_files_info': [],  # Information about uploaded files

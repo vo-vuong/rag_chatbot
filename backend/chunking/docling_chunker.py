@@ -137,8 +137,13 @@ class DoclingChunker:
         try:
             self._ensure_initialized()
 
-            # Chunk document
-            chunks = list(self.chunker.chunk(doc))
+            # Chunk document (dl_doc= is the required keyword argument)
+            chunk_result = self.chunker.chunk(dl_doc=doc)
+            if chunk_result is None:
+                return EmptyChunkResult(
+                    "HybridChunker returned None", chunker_type="docling"
+                )
+            chunks = list(chunk_result)
 
             if not chunks:
                 return EmptyChunkResult("No chunks generated", chunker_type="docling")

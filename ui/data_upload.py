@@ -106,7 +106,6 @@ class DataUploadUI:
             type=["csv", "pdf"],
             accept_multiple_files=True,
             help="Upload one or more CSV or PDF files. PDFs will be processed with OCR "
-            "and semantic chunking.",
         )
 
         if uploaded_files:
@@ -201,14 +200,6 @@ class DataUploadUI:
                 st.write(f"**Type:** {file_info['type']}")
                 st.write(f"**Size:** {file_info['size_mb']} MB")
 
-                # File type specific information
-                if file_info["type"] == "PDF":
-                    st.info(
-                        "🤖 This PDF will be processed with OCR and semantic chunking"
-                    )
-                else:
-                    st.info("📊 This CSV will be processed with standard chunking")
-
                 if file_info["warnings"]:
                     for warning in file_info["warnings"]:
                         st.warning(warning)
@@ -232,13 +223,6 @@ class DataUploadUI:
         )
 
         self.session_manager.set("pdf_processing_mode", mode_choice)
-
-        # Semantic chunking is now ALWAYS enabled using TRUE embedding-based chunking
-        # Configuration managed automatically via backend/strategies/pdf_strategy.py
-        st.info(
-            "ℹ️ **Semantic Chunking**: Now automatically enabled using TRUE embedding-based "
-            "chunking for optimal content understanding. Configuration is managed automatically."
-        )
 
         # Image Captioning Settings
         with st.expander("⚙️ Advanced Image Captioning Settings", expanded=False):

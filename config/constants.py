@@ -72,8 +72,9 @@ DOCLING_CONFIG = {
     "chunking": {
         "tokenizer_type": "openai",  # "openai" or "huggingface"
         "tokenizer_model": "text-embedding-3-small",
-        "max_tokens": 8191,
+        "max_tokens": 1024,  # Optimal chunk size for RAG retrieval
         "merge_peers": True,
+        "overlap_tokens": 50,  # Post-processing overlap for context continuity
     },
     "acceleration": {
         "device": "auto",  # "auto", "cpu", "cuda", "mps"

@@ -43,7 +43,7 @@ class DoclingChunker:
                 {
                     "tokenizer_type": "openai",  # "openai" or "huggingface"
                     "tokenizer_model": "text-embedding-3-small",
-                    "max_tokens": 8191,  # OpenAI embedding context limit
+                    "max_tokens": 1024,  # Optimal chunk size for RAG retrieval
                     "merge_peers": True,
                 }
         """
@@ -72,18 +72,17 @@ class DoclingChunker:
 
         tokenizer_type = self.config.get("tokenizer_type", "openai")
         tokenizer_model = self.config.get("tokenizer_model", "text-embedding-3-small")
-        max_tokens = self.config.get("max_tokens", 8191)
+        max_tokens = self.config.get("max_tokens", 1024)
         merge_peers = self.config.get("merge_peers", True)
 
         if tokenizer_type == "openai":
             try:
                 enc = tiktoken.encoding_for_model(tokenizer_model)
-            except KeyError:
-                # Fallback for embedding models not in tiktoken
-                enc = tiktoken.get_encoding("cl100k_base")
-                logger.warning(
-                    f"Tokenizer for {tokenizer_model} not found, using cl100k_base"
-                )
+            except KeyError as e:
+                raise ValueError(
+                    f"Tokenizer for model '{tokenizer_model}' not found in tiktoken. "
+                    f"Ensure the model name is correct. Error: {e}"
+                ) from e
 
             self.tokenizer = OpenAITokenizer(tokenizer=enc, max_tokens=max_tokens)
             logger.info(f"Using OpenAI tokenizer: {tokenizer_model}")
@@ -151,6 +150,11 @@ class DoclingChunker:
             # Convert to compatible format
             converted_chunks = self._convert_chunks(chunks, doc)
 
+            # Apply post-processing overlap
+            overlap_tokens = self.config.get("overlap_tokens", 0)
+            if overlap_tokens > 0:
+                converted_chunks = self._add_overlap(converted_chunks, overlap_tokens)
+
             # Build metadata
             metadata = {
                 "chunker_type": "docling_hybrid",
@@ -158,19 +162,24 @@ class DoclingChunker:
                 "tokenizer_model": self.config.get(
                     "tokenizer_model", "text-embedding-3-small"
                 ),
-                "max_tokens": self.config.get("max_tokens", 8191),
+                "max_tokens": self.config.get("max_tokens", 1024),
+                "overlap_tokens": overlap_tokens,
                 "original_chunk_count": len(chunks),
             }
 
             # Build stats
             total_tokens = 0
+            chunks_with_overlap = 0
             for c in converted_chunks:
                 if hasattr(c, "metadata") and "token_count" in c.metadata:
                     total_tokens += c.metadata["token_count"]
+                if hasattr(c, "metadata") and c.metadata.get("has_overlap"):
+                    chunks_with_overlap += 1
 
             stats = {
                 "total_chunks": len(converted_chunks),
                 "total_tokens": total_tokens,
+                "chunks_with_overlap": chunks_with_overlap,
             }
 
             return ChunkResult(
@@ -255,6 +264,63 @@ class DoclingChunker:
             converted.append(DoclingChunkElement(text=text, metadata=metadata))
 
         return converted
+
+    def _add_overlap(
+        self, chunks: List[DoclingChunkElement], overlap_tokens: int
+    ) -> List[DoclingChunkElement]:
+        """Add overlap from previous chunk to current chunk for better context.
+
+        Post-processing overlap since Docling HybridChunker lacks native support.
+
+        Args:
+            chunks: List of DoclingChunkElement from HybridChunker
+            overlap_tokens: Number of tokens to overlap from previous chunk
+
+        Returns:
+            List of chunks with overlap text prepended (except first chunk)
+        """
+        if overlap_tokens <= 0 or len(chunks) < 2:
+            return chunks
+
+        result = [chunks[0]]  # First chunk unchanged
+
+        for i in range(1, len(chunks)):
+            prev_text = chunks[i - 1].text
+            curr_chunk = chunks[i]
+
+            # Get last N tokens from previous chunk
+            try:
+                prev_token_count = self.tokenizer.count_tokens(prev_text)
+                if prev_token_count <= overlap_tokens:
+                    # Previous chunk smaller than overlap, use entire text
+                    overlap_text = prev_text
+                else:
+                    # Extract approximate overlap by character ratio
+                    char_ratio = overlap_tokens / prev_token_count
+                    overlap_chars = int(len(prev_text) * char_ratio)
+                    overlap_text = prev_text[-overlap_chars:]
+            except Exception as e:
+                logger.warning(f"Overlap extraction failed for chunk {i}: {e}")
+                result.append(curr_chunk)
+                continue
+
+            # Prepend overlap with separator
+            new_text = f"[...] {overlap_text.strip()} [...]\n\n{curr_chunk.text}"
+
+            # Update metadata
+            new_metadata = {**curr_chunk.metadata}
+            new_metadata["has_overlap"] = True
+            new_metadata["overlap_tokens"] = overlap_tokens
+
+            # Re-count tokens
+            try:
+                new_metadata["token_count"] = self.tokenizer.count_tokens(new_text)
+            except Exception:
+                new_metadata["token_count"] = len(new_text.split())
+
+            result.append(DoclingChunkElement(text=new_text, metadata=new_metadata))
+
+        return result
 
     def chunk_elements(
         self,

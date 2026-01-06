@@ -820,46 +820,39 @@ class DataUploadUI:
                     # Convert processing result to chunks
                     chunks = []
                     for i, element in enumerate(result.elements):
+                        # Preserve existing metadata from DoclingChunker
+                        elem_metadata = (
+                            element.metadata.copy()
+                            if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
+                            else {}
+                        )
+
+                        # Add/override with process-level metrics
+                        elem_metadata.update({
+                            "processing_strategy": (
+                                result.metrics.strategy_used
+                                if hasattr(result, 'metrics') and result.metrics
+                                else elem_metadata.get("source", "docling")
+                            ),
+                            "ocr_used": (
+                                result.metrics.ocr_used
+                                if hasattr(result, 'metrics') and result.metrics
+                                else False
+                            ),
+                            "total_pages": (
+                                result.metrics.pages_processed
+                                if hasattr(result, 'metrics') and result.metrics
+                                else 0
+                            ),
+                        })
+
                         chunk = {
                             "chunk": element.text,
                             "source_file": uploaded_file.name,
                             "file_type": "PDF",
                             "chunk_index": i,
                             "doc_id": str(uuid.uuid4()),
-                            "metadata": {
-                                # Get from metrics (ProcessingMetrics object)
-                                "processing_strategy": (
-                                    result.metrics.strategy_used
-                                    if hasattr(result, 'metrics') and result.metrics
-                                    else "unknown"
-                                ),
-                                "ocr_used": (
-                                    result.metrics.ocr_used
-                                    if hasattr(result, 'metrics') and result.metrics
-                                    else False
-                                ),
-                                "total_pages": (
-                                    result.metrics.pages_processed
-                                    if hasattr(result, 'metrics') and result.metrics
-                                    else 0
-                                ),
-                                # Get from element metadata
-                                "chunk_type": (
-                                    element.metadata.get("chunk_type", "text")
-                                    if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
-                                    else "text"
-                                ),
-                                "element_type": (
-                                    element.metadata.get("element_type", "text")
-                                    if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
-                                    else getattr(element, 'category', 'text')
-                                ),
-                                "page_number": (
-                                    element.metadata.get("page_number")
-                                    if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
-                                    else self._extract_page_number_from_element(element)
-                                ),
-                            },
+                            "metadata": elem_metadata,
                         }
                         chunks.append(chunk)
 
@@ -1013,35 +1006,6 @@ class DataUploadUI:
         if chunks_df is None or chunks_df.empty:
             st.warning("No chunks available for further processing")
             return
-
-    def _extract_page_number_from_element(self, element) -> Optional[int]:
-        """
-        Extract page number from an unstructured element.
-
-        Args:
-            element: Unstructured document element
-
-        Returns:
-            Page number if available, None otherwise
-        """
-        try:
-            # Try to get page number from element metadata
-            if hasattr(element, 'metadata') and hasattr(
-                element.metadata, 'page_number'
-            ):
-                page_num = element.metadata.page_number
-                if page_num is not None:
-                    return int(page_num)
-
-            # Fallback: check for page_number attribute directly on element
-            if hasattr(element, 'page_number'):
-                page_num = element.page_number
-                if page_num is not None:
-                    return int(page_num)
-
-            return None
-        except (ValueError, TypeError, AttributeError):
-            return None
 
     def _handle_save_data(self) -> None:
         """Save enhanced chunks data to Qdrant."""

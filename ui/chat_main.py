@@ -360,7 +360,7 @@ class ChatMainUI:
             else:
                 text_context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
 
-            # Step 7: Build image context (NEW)
+            # Step 7: Build image context using dedicated template (NEW)
             image_context = ""
             image_to_display = None
             image_caption = ""
@@ -370,9 +370,19 @@ class ChatMainUI:
                 caption = top_image["payload"].get("chunk", "")  # Caption stored as "chunk"
                 image_path = top_image["payload"].get("image_path", "")
                 image_score = top_image["score"]
+                page_number = top_image["payload"].get("page_number")
+                source_doc = top_image["payload"].get("source_document", "")
 
-                # Add to context for LLM
-                image_context = f"\n\n**Relevant Image**: {caption}"
+                # Use dedicated image context formatting
+                if PROMPT_BUILDER_AVAILABLE:
+                    image_context = PromptBuilder.format_image_context(
+                        image_caption=caption,
+                        page_number=page_number,
+                        source_document=source_doc,
+                        score=image_score,
+                    )
+                else:
+                    image_context = f"\n\n**Relevant Product Image**: {caption}"
 
                 # Store for display
                 image_to_display = image_path
@@ -383,34 +393,40 @@ class ChatMainUI:
                     f"(score: {image_score:.3f}, path: {image_path})"
                 )
 
-            # Step 8: Build RAG prompt with both contexts
+            # Step 8: Build RAG prompt with separate text and image contexts
             rag_template = self.session_manager.get_active_rag_template()
 
-            if PROMPT_BUILDER_AVAILABLE and rag_template:
+            if PROMPT_BUILDER_AVAILABLE:
                 try:
                     chat_history = self.session_manager.get("chat_history", [])
 
-                    # Build combined context
-                    full_context = text_context + image_context
-
-                    full_prompt = PromptBuilder.build_rag_prompt(
-                        query=query,
-                        context=full_context,
-                        template=rag_template,
-                        chat_history=chat_history,
-                    )
+                    # Use image-aware prompt if images found, else standard RAG
+                    if image_context:
+                        full_prompt = PromptBuilder.build_rag_prompt_with_images(
+                            query=query,
+                            text_context=text_context,
+                            image_context=image_context,
+                            chat_history=chat_history if chat_history else None,
+                        )
+                    else:
+                        full_prompt = PromptBuilder.build_rag_prompt(
+                            query=query,
+                            context=text_context,
+                            template=rag_template,
+                            chat_history=chat_history,
+                        )
                     response = llm_model.generate_content(prompt=full_prompt)
                 except Exception as e:
                     logger.error(f"Error building RAG prompt: {e}")
                     response = llm_model.generate_content(
                         prompt=query,
-                        context=text_context + image_context
+                        context=text_context + ("\n\n" + image_context if image_context else "")
                     )
             else:
                 # Direct context passing
                 response = llm_model.generate_content(
                     prompt=query,
-                    context=text_context + image_context
+                    context=text_context + ("\n\n" + image_context if image_context else "")
                 )
 
             # Step 9: Add attribution
@@ -590,37 +606,6 @@ class ChatMainUI:
         except Exception as e:
             logger.error(f"Image validation error: {e}")
             return False
-
-    def _get_relevant_chunks_with_images(self, query: str) -> List[Dict[str, Any]]:
-        """Retrieve chunks with image metadata."""
-        # Get session managers
-        qdrant_manager = self.session_manager.get("qdrant_manager")
-        embedding_strategy = self.session_manager.get("embedding_strategy")
-
-        # Generate query embedding
-        query_embedding = embedding_strategy.embed_query(query)
-
-        # Search Qdrant
-        num_docs = self.session_manager.get("number_docs_retrieval", 3)
-        score_threshold = self.session_manager.get("score_threshold", 0.5)
-
-        search_results = qdrant_manager.search(
-            query_vector=query_embedding,
-            top_k=num_docs,
-            score_threshold=score_threshold,
-        )
-
-        # Enhance with image information
-        enhanced_chunks = []
-        for chunk_data in search_results:
-            chunk_dict = {
-                'text': chunk_data.get("payload", {}).get("chunk", ""),
-                'metadata': chunk_data.get("payload", {}),
-                'image_paths': chunk_data.get("payload", {}).get("image_paths", [])
-            }
-            enhanced_chunks.append(chunk_dict)
-
-        return enhanced_chunks
 
     def render_sidebar_stats(self) -> None:
         """Render chat statistics in sidebar."""

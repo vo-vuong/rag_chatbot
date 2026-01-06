@@ -103,6 +103,58 @@ prompts:
       version: "1.0"
 
   # ============================================================
+  # IMAGE RAG PROMPTS - For image-based question answering
+  # ============================================================
+
+  - name: "rag_image_context"
+    category: "rag"
+    description: "Simple template for formatting image context"
+    language: "multi"
+    template: |
+      Relevant Image Description:
+      {image_caption}
+    variables: ["image_caption"]
+    metadata:
+      version: "1.0"
+
+  - name: "rag_qa_with_images"
+    category: "rag"
+    description: "RAG with text and image context"
+    language: "multi"
+    template: |
+      Previous conversation:
+      {chat_history}
+
+      Text context from documents:
+      {text_context}
+
+      {image_context}
+
+      Question: {query}
+
+      Based on the text and image description above, provide the appropriate answer.
+    variables: ["text_context", "image_context", "query", "chat_history"]
+    metadata:
+      version: "1.0"
+
+  - name: "rag_qa_with_images_no_history"
+    category: "rag"
+    description: "RAG with text and image context, no history"
+    language: "multi"
+    template: |
+      Text context from documents:
+      {text_context}
+
+      {image_context}
+
+      Question: {query}
+
+      Based on the text and image description above, provide the appropriate answer.
+    variables: ["text_context", "image_context", "query"]
+    metadata:
+      version: "1.0"
+
+  # ============================================================
   # CHAT PROMPTS - For conversational interactions
   # ============================================================
 

@@ -231,6 +231,131 @@ class PromptBuilder:
         return "\n\n---\n\n".join(formatted_chunks)
 
     @staticmethod
+    def format_image_context(
+        image_caption: str,
+        page_number: Optional[int] = None,
+        source_document: Optional[str] = None,
+        score: Optional[float] = None,
+        template: Optional[PromptTemplate] = None,
+    ) -> str:
+        """
+        Format image context using the rag_image_context template.
+
+        Args:
+            image_caption: Caption/description of the image
+            page_number: Page number (unused in simple template)
+            source_document: Source document name (unused in simple template)
+            score: Optional similarity score (unused in simple template)
+            template: Optional PromptTemplate (loads 'rag_image_context' if None)
+
+        Returns:
+            Formatted image context string
+        """
+        if not image_caption:
+            return ""
+
+        # Get template from YAML if not provided
+        if template is None:
+            try:
+                manager = PromptManager()
+                template = manager.get_template('rag_image_context')
+
+                if template is None:
+                    # Fallback to simple format
+                    logger.warning("rag_image_context template not found, using fallback")
+                    return f"Relevant Image Description:\n{image_caption}"
+
+            except Exception as e:
+                logger.error(f"Failed to load image context template: {e}")
+                return f"Relevant Image Description:\n{image_caption}"
+
+        # Build variables for template
+        variables = {'image_caption': image_caption}
+
+        # Render template
+        try:
+            return template.render(**variables)
+        except Exception as e:
+            logger.error(f"Error rendering image context template: {e}")
+            return f"Relevant Image Description:\n{image_caption}"
+
+    @staticmethod
+    def build_rag_prompt_with_images(
+        query: str,
+        text_context: str,
+        image_context: str = "",
+        chat_history: Optional[List[Dict[str, str]]] = None,
+        template: Optional[PromptTemplate] = None,
+    ) -> str:
+        """
+        Build a RAG prompt with separate text and image contexts.
+
+        Uses 'rag_qa_with_images' or 'rag_qa_with_images_no_history' templates.
+
+        Args:
+            query: User's question
+            text_context: Retrieved text context from documents
+            image_context: Formatted image context (from format_image_context)
+            chat_history: Optional conversation history
+            template: Optional PromptTemplate (auto-selects if None)
+
+        Returns:
+            Rendered prompt string
+        """
+        # Format chat history if provided
+        history_str = ""
+        if chat_history:
+            history_str = PromptBuilder.format_chat_history(chat_history)
+
+        # Get template from YAML if not provided
+        if template is None:
+            try:
+                manager = PromptManager()
+
+                # Choose template based on whether history is provided
+                if chat_history:
+                    template = manager.get_template('rag_qa_with_images')
+                else:
+                    template = manager.get_template('rag_qa_with_images_no_history')
+
+                if template is None:
+                    # Fallback to standard RAG template
+                    logger.warning("Image RAG template not found, using standard RAG")
+                    combined_context = text_context
+                    if image_context:
+                        combined_context += f"\n\n{image_context}"
+                    return PromptBuilder.build_rag_prompt(
+                        query=query,
+                        context=combined_context,
+                        chat_history=history_str if history_str else None,
+                    )
+
+            except Exception as e:
+                logger.error(f"Failed to load image RAG template: {e}")
+                combined_context = text_context
+                if image_context:
+                    combined_context += f"\n\n{image_context}"
+                return PromptBuilder.build_rag_prompt(query=query, context=combined_context)
+
+        # Build variables for template
+        variables = {
+            'query': query,
+            'text_context': text_context if text_context else "No text context available.",
+            'image_context': image_context if image_context else "",
+            'chat_history': history_str if history_str else "No previous conversation.",
+        }
+
+        # Render template
+        try:
+            return template.render(**variables)
+        except Exception as e:
+            logger.error(f"Error rendering image RAG template: {e}")
+            raise ValueError(
+                f"Failed to render image RAG template '{template.name}': {e}. "
+                f"Required variables: {template.variables}"
+            )
+
+    @staticmethod
     def format_chat_history(
         history: List[Dict[str, str]],
         max_messages: int = 10,

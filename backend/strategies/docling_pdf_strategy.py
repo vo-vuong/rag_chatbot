@@ -385,71 +385,15 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         """
         from backend.chunking.docling_chunker import DoclingChunker
 
-        try:
-            chunker = DoclingChunker(config=chunking_config)
-            chunk_result = chunker.chunk_document(doc, image_paths)
+        chunker = DoclingChunker(config=chunking_config)
+        chunk_result = chunker.chunk_document(doc, image_paths)
 
-            if chunk_result.chunks:
-                logger.info(
-                    f"DoclingChunker created {len(chunk_result.chunks)} chunks "
-                    f"(tokenizer: {chunking_config.get('tokenizer_model', 'default')})"
-                )
-                return chunk_result.chunks, chunk_result.metadata
-            else:
-                # Fallback to simple element extraction if chunking fails
-                logger.warning(
-                    "DoclingChunker returned no chunks, falling back to element extraction"
-                )
-                elements = self._convert_to_elements(doc)
-                return elements, {"chunker_type": "fallback", "reason": "no_chunks"}
+        if not chunk_result.chunks:
+            raise ValueError("DoclingChunker returned no chunks - document may be empty or invalid")
 
-        except Exception as e:
-            logger.warning(f"DoclingChunker failed: {e}, falling back to element extraction")
-            elements = self._convert_to_elements(doc)
-            return elements, {"chunker_type": "fallback", "error": str(e)}
+        logger.info(
+            f"DoclingChunker created {len(chunk_result.chunks)} chunks "
+            f"(tokenizer: {chunking_config.get('tokenizer_model', 'default')})"
+        )
+        return chunk_result.chunks, chunk_result.metadata
 
-    def _convert_to_elements(self, doc) -> List[Any]:
-        """Convert Docling document to element list for compatibility."""
-        from dataclasses import dataclass
-
-        @dataclass
-        class DoclingElement:
-            text: str
-            element_type: str
-            metadata: Dict[str, Any]
-
-        elements = []
-
-        # Add text items
-        for item in doc.texts:
-            text = item.text if hasattr(item, "text") else str(item)
-            elements.append(
-                DoclingElement(
-                    text=text,
-                    element_type=str(item.label) if hasattr(item, "label") else "text",
-                    metadata={
-                        "page_number": self._get_page_number(item),
-                        "source": "docling",
-                    },
-                )
-            )
-
-        # Add tables as markdown
-        for table in doc.tables:
-            md = (
-                table.export_to_markdown()
-                if hasattr(table, "export_to_markdown")
-                else str(table)
-            )
-            elements.append(
-                DoclingElement(
-                    text=md,
-                    element_type="table",
-                    metadata={
-                        "page_number": self._get_page_number(table),
-                        "source": "docling",
-                    },
-                )
-            )
-
-        return elements

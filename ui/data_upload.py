@@ -275,9 +275,8 @@ class DataUploadUI:
 
         # Mode information
         mode_info = {
-            "auto": "🤖 Automatically detects the best processing method based on PDF characteristics",
-            "ocr": "🔍 Forces OCR processing for scanned documents and image-based PDFs",
-            "no_ocr": "⚡ Skips OCR for faster processing of text-only PDFs",
+            "no_ocr": "⚡ Fast processing for text-based PDFs (no OCR needed)",
+            "ocr": "🔍 Uses EasyOCR for scanned documents and image-based PDFs",
         }
 
         st.info(

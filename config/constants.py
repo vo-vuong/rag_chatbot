@@ -134,9 +134,8 @@ SUPPORTED_FILE_TYPES = ["csv", "pdf"]
 # ============================================================
 # Docling OCR modes - used in UI for user selection
 PDF_PROCESSING_MODES = {
-    "auto": "Auto (Recommended)",
-    "ocr": "Force OCR",
-    "no_ocr": "Skip OCR (Text-only PDFs)",
+    "no_ocr": "Skip OCR (Recommended)",
+    "ocr": "Enable OCR (For scanned PDFs)",
 }
 
 PDF_SIZE_WARNING_MB = 10  # Warning threshold for PDF file sizes

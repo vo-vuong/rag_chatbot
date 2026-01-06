@@ -98,7 +98,7 @@ class SessionManager:
             # ============================================================
             # PDF PROCESSING CONFIGURATION
             # ============================================================
-            'pdf_processing_mode': 'auto',  # auto, ocr, no_ocr
+            'pdf_processing_mode': 'no_ocr',  # no_ocr, ocr
             # Chunking configuration managed via chunking section below
             'pdf_processing_progress': {},  # Progress tracking for PDF processing
             'uploaded_files_info': [],  # Information about uploaded files

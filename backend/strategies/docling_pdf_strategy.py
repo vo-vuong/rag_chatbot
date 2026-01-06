@@ -67,9 +67,12 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
 
         opts = PdfPipelineOptions()
 
-        # OCR configuration with validation
-        opts.do_ocr = ocr_config.get("enabled", True)
-        if opts.do_ocr:
+        # OCR configuration - respect mode from pdf config
+        # Mode comes from UI selection: "no_ocr" (default) or "ocr"
+        pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
+        if pdf_mode == "ocr":
+            # OCR enabled
+            opts.do_ocr = True
             confidence = ocr_config.get("confidence_threshold", 0.5)
             if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
                 logger.warning(f"Invalid confidence_threshold {confidence}, using 0.5")
@@ -78,6 +81,11 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                 lang=ocr_config.get("languages", ["en", "vi"]),
                 confidence_threshold=confidence,
             )
+            logger.info(f"OCR enabled with languages: {ocr_config.get('languages', ['en', 'vi'])}")
+        else:
+            # no_ocr mode (default) - skip OCR for faster processing
+            opts.do_ocr = False
+            logger.info("OCR disabled (no_ocr mode - default)")
 
         # Table extraction
         opts.do_table_structure = True
@@ -177,8 +185,9 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             result = self.converter.convert(source=str(file_path))
             doc = result.document
 
-            # Check OCR usage
-            self.ocr_used = self.docling_config.get("ocr", {}).get("enabled", True)
+            # Check OCR usage - based on actual mode used
+            pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
+            self.ocr_used = pdf_mode == "ocr"
 
             # Extract images
             image_data = self._extract_images(doc, file_path)

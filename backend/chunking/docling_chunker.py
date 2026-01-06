@@ -216,11 +216,15 @@ class DoclingChunker:
                 text = chunk.text if hasattr(chunk, "text") else str(chunk)
 
             # Extract metadata
+            # Handle headings - check for both attribute existence AND non-None value
+            headings = []
+            if hasattr(chunk, "meta") and hasattr(chunk.meta, "headings"):
+                if chunk.meta.headings is not None:
+                    headings = list(chunk.meta.headings)
+
             metadata = {
                 "chunk_index": i,
-                "headings": (
-                    list(chunk.meta.headings) if hasattr(chunk.meta, "headings") else []
-                ),
+                "headings": headings,
                 "source": "docling",
             }
 

@@ -11,12 +11,11 @@ A production-ready Retrieval-Augmented Generation (RAG) system built with Stream
 - 💾 **Vector Database**: Qdrant integration with dual collections (text + images)
 - 🔄 **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes
 - 🗂️ **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
-- ⚙️ **UI Optimization**: Real-time progress, cost tracking, configurable failure modes
-- 🔒 **Security**: XSS protection, path traversal prevention, input validation
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Python 3.11+
 - Conda (environment management)
 - Docker & Docker Compose (for Qdrant)
@@ -60,25 +59,26 @@ Visit `http://localhost:8501` to access the application.
 ## 📋 Document Processing
 
 ### Supported Formats
-- **PDF**: Multi-tier processing (Auto, Fast, Hi-Res, OCR) with image extraction and AI captioning
+
+- **PDF**: Docling-powered processing with EasyOCR (en, vi), TableFormer tables, GPU acceleration
 - **CSV**: Streaming processing with column-based grouping and memory optimization
 
-### Processing Strategies
-- **Auto**: Intelligent strategy detection based on document content
-- **Fast**: Quick text extraction for text-based PDFs
-- **High Resolution**: OCR-enabled processing for image-based PDFs
-- **OCR Only**: Force OCR for scanned documents
-- **Fallback**: Basic extraction using pdfplumber
+### Processing Features
+
+- **Docling PDF Strategy**: Modern PDF processing with OCR, table extraction, and image handling
+- **Token-Aware Chunking**: 512 max tokens optimized for RAG retrieval performance
+- **Post-Processing Overlap**: 50 tokens overlap for context continuity
+- **Vision API Integration**: GPT-4o Mini image captioning with MD5 caching
 
 ### Multimodal Vision Features
+
 - **AI Captioning**: GPT-4o Mini Vision generates descriptive captions for extracted images
 - **Caption Caching**: MD5-based caching for >80% cost savings on duplicate images
-- **Cost Tracking**: Real-time display of Vision API costs during upload
-- **Failure Modes**: Configurable handling (Graceful/Strict/Skip) for captioning errors
 
 ## ⚙️ Configuration
 
 ### Environment Variables (.env)
+
 ```bash
 OPENAI_API_KEY=sk-...
 GEMINI_API_KEY=...      # Optional
@@ -105,22 +105,16 @@ QDRANT_PORT=6333
 ## 🔧 Development
 
 The project uses a modular architecture with Strategy, Factory, and Singleton patterns.
+
 - `backend/`: Core logic (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit components and page routing
 - `config/`: Application constants and defaults
 - `tests/`: Pytest suite (focused on vision module)
 
-## 📊 Current Status
-
-**Version**: 1.3.0 (Hybrid Chunking Phase 04)
-**Last Updated**: 2025-12-26
-**Lines of Code**: ~10,200 (44 backend, 7 UI modules)
-**Test Coverage**: >90% for hybrid chunking
-**Production Ready**: ✅ All critical features tested
-
 ## 📚 Documentation
 
 Comprehensive documentation available in `docs/`:
+
 - **[Project Overview & PDR](docs/project-overview-pdr.md)**: Features, requirements, architecture
 - **[Codebase Summary](docs/codebase-summary.md)**: Component details, data flows
 - **[Code Standards](docs/code-standards.md)**: Development guidelines, patterns
@@ -131,17 +125,5 @@ Comprehensive documentation available in `docs/`:
 
 **Core**: Python 3.11+, Streamlit 1.29+, Qdrant 1.12.5, LangChain 0.1+
 **AI/ML**: OpenAI (GPT-4o/embeddings/Vision), Google Gemini, sentence-transformers
-**Processing**: unstructured, pdfplumber, pandas, pytesseract, Pillow, imagehash
+**Processing**: Docling 2.0+, EasyOCR, pandas, pytesseract, Pillow, imagehash, tiktoken
 **Infrastructure**: Docker Compose, conda environment management
-
-## 🤝 Contributing
-
-See [Code Standards](docs/code-standards.md) for development guidelines:
-- YANGI, KISS, DRY principles
-- File size limits (300 lines max)
-- Conventional Commits
-- Unit test coverage >80%
-
-## 📝 License
-
-This project is part of an NLP research initiative.

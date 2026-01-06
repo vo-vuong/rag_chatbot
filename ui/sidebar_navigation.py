@@ -261,7 +261,7 @@ class SidebarNavigation:
                 "Temperature",
                 min_value=0.0,
                 max_value=2.0,
-                value=self.session_manager.get("temperature", 0.7),
+                value=self.session_manager.get("temperature", 0.2),
                 step=0.1,
                 help="Higher = more creative, Lower = more focused",
             )

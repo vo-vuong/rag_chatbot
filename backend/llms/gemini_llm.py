@@ -23,7 +23,7 @@ class GeminiLLM(OnlineLLMStrategy):
         self,
         api_key: str,
         model_version: str = "gemini-1.5-flash",
-        temperature: float = 0.7,
+        temperature: float = 0.2,
         max_tokens: int = 2000,
     ):
         """Initialize Gemini LLM."""

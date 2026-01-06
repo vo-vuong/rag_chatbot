@@ -74,7 +74,7 @@ class SessionManager:
             'llm_model': None,  # OpenAILLM instance
             'llm_model_name': None,  # Model name (e.g., "gpt-4o-mini")
             'system_prompt': None,  # System prompt
-            'temperature': 0.7,  # LLM temperature
+            'temperature': 0.2,  # LLM temperature
             'chat_mode': 'rag',  # 'rag' or 'llm_only'
             # ============================================================
             # VECTOR DATABASE (QDRANT)
@@ -738,7 +738,7 @@ class SessionManager:
             'collection': collection_name,
             'total_docs': str(doc_count),
             'num_retrieval': str(self.get('number_docs_retrieval', 3)),
-            'temperature': str(self.get('temperature', 0.7)),
+            'temperature': str(self.get('temperature', 0.2)),
             'score_threshold': str(self.get('score_threshold', 0.5)),
         }
 

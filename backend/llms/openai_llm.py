@@ -26,7 +26,7 @@ class OpenAILLM(OnlineLLMStrategy):
         api_key: str,
         model_version: str = "gpt-4o-mini",
         system_prompt: str = "You are a helpful AI assistant.",
-        temperature: float = 0.7,
+        temperature: float = 0.2,
         max_tokens: int = 2000,
     ):
         """Initialize OpenAI LLM."""

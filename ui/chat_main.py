@@ -188,13 +188,25 @@ class ChatMainUI:
                     # Get image data from session state
                     image_paths = st.session_state.get("last_response_images", [])
                     image_captions = st.session_state.get("last_response_image_captions", [])
+                    chat_mode = self.session_manager.get("chat_mode", "rag")  # Default to rag
+
+                    logger.info(
+                        f"After response: image_paths={image_paths}, "
+                        f"chat_mode={chat_mode}"
+                    )
 
                     # Display response
                     st.markdown(response)
 
                     # Display images if available
-                    if image_paths and self.session_manager.get("chat_mode") == "rag":
+                    if image_paths and chat_mode == "rag":
+                        logger.info("Calling _display_response_images")
                         self._display_response_images(image_paths, image_captions)
+                    else:
+                        logger.info(
+                            f"Skipping image display: paths={bool(image_paths)}, "
+                            f"mode={chat_mode}"
+                        )
 
                     # Save message with images to chat history
                     self._add_message("assistant", response, image_paths, image_captions)
@@ -310,6 +322,34 @@ class ChatMainUI:
                     st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
                     st.markdown("---")
 
+            # Display retrieved images in sidebar (NEW)
+            if image_results:
+                with st.sidebar.expander("🖼️ Retrieved Images", expanded=False):
+                    for i, img_result in enumerate(image_results, 1):
+                        payload = img_result["payload"]
+                        img_score = img_result["score"]
+                        img_caption = payload.get("chunk", "No caption")
+                        img_path = payload.get("image_path", "")
+                        page_num = payload.get("page_number", "?")
+
+                        st.markdown(f"**Image {i}** (Score: {img_score:.3f})")
+                        st.markdown(f"📍 Page: {page_num}")
+
+                        # Display thumbnail if file exists
+                        if img_path and self._validate_image_file(img_path):
+                            st.image(img_path, width=200)
+                        else:
+                            st.warning("⚠️ Image file not found")
+
+                        # Show caption (truncated)
+                        caption_display = (
+                            img_caption[:150] + "..."
+                            if len(img_caption) > 150
+                            else img_caption
+                        )
+                        st.caption(f"📝 {caption_display}")
+                        st.markdown("---")
+
             # Step 6: Build text context (existing)
             if PROMPT_BUILDER_AVAILABLE:
                 chunks_only = [chunk for chunk, _ in retrieved_chunks]
@@ -327,7 +367,7 @@ class ChatMainUI:
 
             if image_results:
                 top_image = image_results[0]
-                caption = top_image["payload"].get("caption", "")
+                caption = top_image["payload"].get("chunk", "")  # Caption stored as "chunk"
                 image_path = top_image["payload"].get("image_path", "")
                 image_score = top_image["score"]
 
@@ -386,9 +426,11 @@ class ChatMainUI:
             if image_to_display:
                 st.session_state.last_response_images = [image_to_display]
                 st.session_state.last_response_image_captions = [image_caption]
+                logger.info(f"Stored image in session state: {image_to_display}")
             else:
                 st.session_state.last_response_images = []
                 st.session_state.last_response_image_captions = []
+                logger.debug("No image to store in session state")
 
             return response
 
@@ -443,10 +485,13 @@ class ChatMainUI:
         """
         import html
 
+        logger.info(f"Displaying {len(image_paths)} image(s): {image_paths}")
+
         st.markdown("### 📸 Relevant Image")
 
         for i, (img_path, caption) in enumerate(zip(image_paths, captions)):
             try:
+                logger.info(f"Validating image {i+1}: {img_path}")
                 if self._validate_image_file(img_path):
                     # Security: Sanitize caption to prevent XSS
                     safe_caption = html.escape(caption)
@@ -458,6 +503,7 @@ class ChatMainUI:
                         width=600,
                         output_format="auto"
                     )
+                    logger.info(f"Image displayed successfully: {img_path}")
 
                     # Show image metadata in expander
                     with st.expander("ℹ️ Image Details", expanded=False):
@@ -467,6 +513,7 @@ class ChatMainUI:
                 else:
                     from pathlib import Path
                     st.error(f"🖼️ Image not found or invalid: {Path(img_path).name}")
+                    logger.warning(f"Image validation failed: {img_path}")
 
             except Exception as e:
                 st.error(f"🖼️ Error displaying image: {str(e)}")
@@ -509,12 +556,12 @@ class ChatMainUI:
 
             # Convert to Path object
             img_path = Path(image_path)
+            img_path_resolved = img_path.resolve()
 
             # Security: Ensure path is within extracted_images directory
             extracted_images_dir = Path("extracted_images").resolve()
             try:
                 # Check if path is within allowed directory (Python 3.9+)
-                img_path_resolved = img_path.resolve()
                 if not img_path_resolved.is_relative_to(extracted_images_dir):
                     logger.warning(f"Security: Image path outside allowed directory: {image_path}")
                     return False
@@ -523,13 +570,25 @@ class ChatMainUI:
                 logger.warning(f"Security: Invalid image path: {image_path}")
                 return False
 
-            return (
-                img_path.exists() and
-                img_path.is_file() and
-                img_path.stat().st_size > 0 and
-                img_path.suffix.lower() in ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')
-            )
-        except Exception:
+            # Validate file existence and properties
+            if not img_path_resolved.exists():
+                logger.warning(f"Image file not found: {img_path_resolved}")
+                return False
+            if not img_path_resolved.is_file():
+                logger.warning(f"Image path is not a file: {img_path_resolved}")
+                return False
+            if img_path_resolved.stat().st_size == 0:
+                logger.warning(f"Image file is empty: {img_path_resolved}")
+                return False
+            if img_path_resolved.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'):
+                logger.warning(f"Invalid image extension: {img_path_resolved.suffix}")
+                return False
+
+            logger.debug(f"Image validation passed: {img_path_resolved}")
+            return True
+
+        except Exception as e:
+            logger.error(f"Image validation error: {e}")
             return False
 
     def _get_relevant_chunks_with_images(self, query: str) -> List[Dict[str, Any]]:

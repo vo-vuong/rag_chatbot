@@ -27,18 +27,22 @@ class ImageCaptioner:
     PRICING_INPUT = 0.00015
     PRICING_OUTPUT = 0.0006
 
-    BRIEF_CAPTION_PROMPT = """Describe this image briefly in 1-2 sentences.
-Focus on:
-- Main content (chart, diagram, photo, etc.)
-- Key data or information shown
-- Chart type if applicable (bar, line, pie, etc.)
-Be concise and factual."""
+    PRODUCT_CAPTION_PROMPT = """Describe this product image in 2-3 sentences.
+CRITICAL - Include ALL specific identifiers visible:
+- Brand names (Apple, Samsung, Sony, Dell, HP, etc.)
+- Model numbers and variants (iPhone 17 Pro, Galaxy S25 Ultra, etc.)
+- Product categories with specifics (smartphone, laptop, headphones)
+- Key specifications shown (storage, color, size, dimensions)
+- Any text/labels visible on the product or packaging
+NEVER use generic terms like "a phone" or "a laptop" - always use exact product names.
+If brand/model is unclear, describe distinctive visual features in detail.
+If document context is provided below, use it to identify the product more accurately."""
 
     def __init__(
         self,
         api_key: str,
         model: str = "gpt-4o-mini",
-        max_tokens: int = 100,
+        max_tokens: int = 150,
         temperature: float = 0.3,
         detail_mode: str = "low",
         enable_cache: bool = True,
@@ -50,7 +54,7 @@ Be concise and factual."""
         Args:
             api_key: OpenAI API key
             model: Vision model name (default: gpt-4o-mini)
-            max_tokens: Max tokens in caption (100 = ~50 words)
+            max_tokens: Max tokens in caption (150 = ~75 words)
             temperature: Sampling temperature (0.3 = more consistent)
             detail_mode: Image detail level ("low" or "high")
             enable_cache: Enable caption caching (default: True)
@@ -111,7 +115,7 @@ Be concise and factual."""
             caption, cost = self._retry_with_backoff(
                 image_path=image_path,
                 base64_image=base64_image,
-                prompt=custom_prompt or self.BRIEF_CAPTION_PROMPT,
+                prompt=custom_prompt or self.PRODUCT_CAPTION_PROMPT,
                 max_tokens=max_tokens or self.max_tokens
             )
 

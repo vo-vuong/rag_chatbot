@@ -545,7 +545,7 @@ class DocumentProcessor:
                             "chunk": img[
                                 "caption"
                             ],  # Store caption in "chunk" field for consistency
-                            "caption": img["caption"],
+                            "surrounding_context": img.get("surrounding_context", ""),
                             "docling_caption": img.get("docling_caption", ""),
                             "image_path": img["image_path"],
                             "image_hash": img["image_hash"],

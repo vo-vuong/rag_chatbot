@@ -239,6 +239,54 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                 processing_time=time.time() - start_time,
             )
 
+    def _extract_surrounding_context(
+        self, doc, pic, all_items: list, pic_index: int, max_tokens: int = 200
+    ) -> str:
+        """Extract surrounding text context for image captioning.
+
+        Args:
+            doc: Docling document
+            pic: PictureItem being processed
+            all_items: List of (item, level) tuples from doc.iterate_items()
+            pic_index: Index of pic in all_items
+            max_tokens: Maximum tokens for context (default: 200)
+
+        Returns:
+            Combined context string (preceding text + figure caption)
+        """
+        from docling_core.types.doc import TextItem
+
+        # Get preceding text items (up to 2)
+        preceding_text = []
+        for j in range(max(0, pic_index - 3), pic_index):
+            prev_item, _ = all_items[j]
+            if isinstance(prev_item, TextItem) and hasattr(prev_item, "text"):
+                preceding_text.append(prev_item.text)
+                if len(preceding_text) >= 2:
+                    break
+
+        # Get figure caption from PDF structure
+        docling_caption = ""
+        if hasattr(pic, "caption_text"):
+            try:
+                docling_caption = pic.caption_text(doc=doc) or ""
+            except Exception:
+                pass
+
+        # Combine context
+        context_parts = preceding_text
+        if docling_caption:
+            context_parts.append(f"Figure caption: {docling_caption}")
+
+        full_context = " ".join(context_parts)
+
+        # Truncate to max_tokens (approximate: 1 token ≈ 4 chars for English)
+        max_chars = max_tokens * 4
+        if len(full_context) > max_chars:
+            full_context = full_context[:max_chars] + "..."
+
+        return full_context.strip()
+
     def _extract_images(self, doc, file_path: Path) -> List[Dict[str, Any]]:
         """Extract images from Docling document."""
         from backend.utils.image_storage import ImageStorageUtility
@@ -251,6 +299,13 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             ),
             create_subdirs=True,
         )
+
+        # Build item index for context extraction
+        all_items = list(doc.iterate_items())
+        pic_to_index = {}
+        for idx, (item, level) in enumerate(all_items):
+            if hasattr(item, "image") and item.image:
+                pic_to_index[id(item)] = idx
 
         for i, pic in enumerate(doc.pictures):
             try:
@@ -286,10 +341,19 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
                     except Exception:
                         pass
 
+                # Extract surrounding context for Vision API
+                pic_index = pic_to_index.get(id(pic), -1)
+                surrounding_context = ""
+                if pic_index >= 0:
+                    surrounding_context = self._extract_surrounding_context(
+                        doc, pic, all_items, pic_index, max_tokens=200
+                    )
+
                 image_data.append({
                     "image_path": str(img_path),
                     "caption": "",  # Filled by _caption_images
                     "docling_caption": docling_caption,
+                    "surrounding_context": surrounding_context,  # NEW: for Vision API
                     "image_hash": image_hash,
                     "page_number": page_num,
                     "image_metadata": {
@@ -307,7 +371,7 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         return image_data
 
     def _caption_images(self, image_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Caption images using Vision API."""
+        """Caption images using Vision API with surrounding context."""
         if not self.captioner:
             for img in image_data:
                 img["caption"] = img.get("docling_caption") or "Image from document"
@@ -315,7 +379,27 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
 
         for img in image_data:
             try:
-                caption, cost = self.captioner.caption_image(img["image_path"])
+                # Build context-aware prompt if context available
+                custom_prompt = None
+                context = img.get("surrounding_context", "")
+                docling_cap = img.get("docling_caption", "")
+
+                if context or docling_cap:
+                    context_lines = []
+                    if context:
+                        context_lines.append(f"Document context: {context}")
+                    if docling_cap:
+                        context_lines.append(f"Figure caption: {docling_cap}")
+
+                    custom_prompt = (
+                        self.captioner.PRODUCT_CAPTION_PROMPT
+                        + "\n\n"
+                        + "\n".join(context_lines)
+                    )
+
+                caption, cost = self.captioner.caption_image(
+                    img["image_path"], custom_prompt=custom_prompt
+                )
                 img["caption"] = caption
                 img["cost"] = cost
             except Exception as e:

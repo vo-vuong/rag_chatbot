@@ -9,6 +9,7 @@ from typing import List, Dict, Any
 import streamlit as st
 
 from backend.session_manager import SessionManager
+from backend.routing import QueryRouter
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,6 +30,15 @@ class ChatMainUI:
 
     def __init__(self, session_manager: SessionManager):
         self.session_manager = session_manager
+
+    def _get_query_router(self) -> QueryRouter:
+        """Get or create QueryRouter instance."""
+        if not hasattr(self, '_query_router'):
+            api_key = self.session_manager.get("openai_api_key") or os.getenv("OPENAI_API_KEY")
+            if not api_key:
+                raise ValueError("OpenAI API key not found in session or environment")
+            self._query_router = QueryRouter(openai_api_key=api_key)
+        return self._query_router
 
     def render(self) -> None:
         """Render main chat interface."""
@@ -255,203 +265,231 @@ class ChatMainUI:
     def _generate_rag_response(
         self, query: str, llm_model, qdrant_manager, embedding_strategy
     ) -> str:
-        """Generate response using dual search (text + images)."""
+        """Generate response using routed single-collection search."""
         try:
-            # Step 1: Generate query embedding (once for both searches)
+            # Step 1: Classify query using QueryRouter
+            router = self._get_query_router()
+            classification = router.classify(query)
+
+            logger.info(f"Query routed to: {classification.route} (reason: {classification.reasoning})")
+
+            # Step 2: Route to appropriate handler
+            if classification.route == "text_only":
+                logger.info("Call text_only response")
+                return self._generate_text_response(
+                    query, llm_model, qdrant_manager, embedding_strategy
+                )
+            else:  # image_only
+                return self._generate_image_response(
+                    query, llm_model, embedding_strategy
+                )
+
+        except Exception as e:
+            logger.error(f"Router error, falling back to text: {e}")
+            # Fallback to text_only on router error
+            return self._generate_text_response(
+                query, llm_model, qdrant_manager, embedding_strategy
+            )
+
+    def _generate_text_response(
+        self, query: str, llm_model, qdrant_manager, embedding_strategy
+    ) -> str:
+        """Generate response from text collection only."""
+        try:
+            logger.info(f"User query: {query}")
+            # Embed query
             query_embedding = embedding_strategy.embed_query(query)
 
-            # Step 2: Search text collection (existing)
+            # Search text collection
             num_docs = self.session_manager.get("number_docs_retrieval", 3)
-            text_score_threshold = self.session_manager.get("score_threshold", 0.5)
+            score_threshold = self.session_manager.get("score_threshold", 0.5)
 
             text_results = qdrant_manager.search(
                 query_vector=query_embedding,
                 top_k=num_docs,
-                score_threshold=text_score_threshold,
+                score_threshold=score_threshold,
             )
 
-            # Step 3: Search image collection (NEW)
-            image_manager = self.session_manager.get_image_qdrant_manager()
-            image_results = []
-
-            if image_manager and self.session_manager.get("enable_image_search", True):
-                image_score_threshold = self.session_manager.get_image_score_threshold()
-                image_top_k = self.session_manager.get("image_top_k", 1)
-
-                try:
-                    image_results = image_manager.search(
-                        query_vector=query_embedding,
-                        top_k=image_top_k,
-                        score_threshold=image_score_threshold,
-                    )
-
-                    if image_results:
-                        logger.info(
-                            f"Found {len(image_results)} relevant image(s) "
-                            f"(top score: {image_results[0]['score']:.3f})"
-                        )
-                    else:
-                        logger.debug("No images found above threshold")
-
-                except Exception as e:
-                    logger.warning(f"Image search failed: {e}")
-                    image_results = []
-            else:
-                logger.debug("Image collection not available, skipping image search")
-
-            # Step 4: Check if any results found
             if not text_results:
-                # No text chunks found, fall back to LLM only
                 return self._generate_llm_only_response(query, llm_model) + (
-                    "\n\n*Note: No relevant documents found. "
-                    "Answer based on general knowledge.*"
+                    "\n\n*Note: No relevant documents found.*"
                 )
 
-            # Step 5: Extract text context
-            retrieved_chunks = []
+            # Extract chunks
+            retrieved_chunks = [
+                (result["payload"].get("chunk", ""), result["score"])
+                for result in text_results
+            ]
 
-            for result in text_results:
-                chunk = result["payload"].get("chunk", "")
-                score = result["score"]
-                retrieved_chunks.append((chunk, score))
+            # Display in sidebar
+            self._display_sidebar_text_results(retrieved_chunks)
 
-            # Display retrieved docs in sidebar (existing)
-            with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
-                for i, (chunk, score) in enumerate(retrieved_chunks, 1):
-                    st.markdown(f"**Doc {i}** (Score: {score:.3f})")
-                    st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
-                    st.markdown("---")
-
-            # Display retrieved images in sidebar (NEW)
-            if image_results:
-                with st.sidebar.expander("🖼️ Retrieved Images", expanded=False):
-                    for i, img_result in enumerate(image_results, 1):
-                        payload = img_result["payload"]
-                        img_score = img_result["score"]
-                        img_caption = payload.get("chunk", "No caption")
-                        img_path = payload.get("image_path", "")
-                        page_num = payload.get("page_number", "?")
-
-                        st.markdown(f"**Image {i}** (Score: {img_score:.3f})")
-                        st.markdown(f"📍 Page: {page_num}")
-
-                        # Display thumbnail if file exists
-                        if img_path and self._validate_image_file(img_path):
-                            st.image(img_path, width=200)
-                        else:
-                            st.warning("⚠️ Image file not found")
-
-                        # Show caption (truncated)
-                        caption_display = (
-                            img_caption[:150] + "..."
-                            if len(img_caption) > 150
-                            else img_caption
-                        )
-                        st.caption(f"📝 {caption_display}")
-                        st.markdown("---")
-
-            # Step 6: Build text context (existing)
+            # Build context
             if PROMPT_BUILDER_AVAILABLE:
                 chunks_only = [chunk for chunk, _ in retrieved_chunks]
                 scores_only = [score for _, score in retrieved_chunks]
-                text_context = PromptBuilder.format_context(
+                context = PromptBuilder.format_context(
                     chunks_only, scores_only, include_scores=False
                 )
             else:
-                text_context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
+                context = "\n\n".join([chunk for chunk, _ in retrieved_chunks])
 
-            # Step 7: Build image context using dedicated template (NEW)
-            image_context = ""
-            image_to_display = None
-            image_caption = ""
-
-            if image_results:
-                top_image = image_results[0]
-                caption = top_image["payload"].get("chunk", "")  # Caption stored as "chunk"
-                image_path = top_image["payload"].get("image_path", "")
-                image_score = top_image["score"]
-                page_number = top_image["payload"].get("page_number")
-                source_doc = top_image["payload"].get("source_document", "")
-
-                # Use dedicated image context formatting
-                if PROMPT_BUILDER_AVAILABLE:
-                    image_context = PromptBuilder.format_image_context(
-                        image_caption=caption,
-                        page_number=page_number,
-                        source_document=source_doc,
-                        score=image_score,
-                    )
-                else:
-                    image_context = f"\n\n**Relevant Product Image**: {caption}"
-
-                # Store for display
-                image_to_display = image_path
-                image_caption = caption
-
-                logger.info(
-                    f"Including image in context: '{caption}' "
-                    f"(score: {image_score:.3f}, path: {image_path})"
-                )
-
-            # Step 8: Build RAG prompt with separate text and image contexts
+            # Generate response
             rag_template = self.session_manager.get_active_rag_template()
+            chat_history = self.session_manager.get("chat_history", [])
 
             if PROMPT_BUILDER_AVAILABLE:
-                try:
-                    chat_history = self.session_manager.get("chat_history", [])
-
-                    # Use image-aware prompt if images found, else standard RAG
-                    if image_context:
-                        full_prompt = PromptBuilder.build_rag_prompt_with_images(
-                            query=query,
-                            text_context=text_context,
-                            image_context=image_context,
-                            chat_history=chat_history if chat_history else None,
-                        )
-                    else:
-                        full_prompt = PromptBuilder.build_rag_prompt(
-                            query=query,
-                            context=text_context,
-                            template=rag_template,
-                            chat_history=chat_history,
-                        )
-                    response = llm_model.generate_content(prompt=full_prompt)
-                except Exception as e:
-                    logger.error(f"Error building RAG prompt: {e}")
-                    response = llm_model.generate_content(
-                        prompt=query,
-                        context=text_context + ("\n\n" + image_context if image_context else "")
-                    )
-            else:
-                # Direct context passing
-                response = llm_model.generate_content(
-                    prompt=query,
-                    context=text_context + ("\n\n" + image_context if image_context else "")
+                # Convert chat_history list to formatted string for template
+                chat_history_str = (
+                    PromptBuilder.format_chat_history(chat_history)
+                    if chat_history
+                    else "No previous conversation."
                 )
 
-            # Step 9: Add attribution
-            attribution = f"\n\n---\n*📚 Answer based on {len(retrieved_chunks)} text document(s)"
-            if image_results:
-                attribution += f" and 1 image*"
+                full_prompt = PromptBuilder.build_rag_prompt(
+                    query=query,
+                    context=context,
+                    template=rag_template,
+                    chat_history=chat_history_str,
+                )
+                response = llm_model.generate_content(prompt=full_prompt)
             else:
-                attribution += "*"
+                response = llm_model.generate_content(prompt=query, context=context)
 
-            response += attribution
+            # Attribution
+            response += f"\n\n---\n*📚 Answer based on {len(retrieved_chunks)} text document(s)*"
 
-            # Step 10: Store image for display (NEW)
-            if image_to_display:
-                st.session_state.last_response_images = [image_to_display]
-                st.session_state.last_response_image_captions = [image_caption]
-                logger.info(f"Stored image in session state: {image_to_display}")
-            else:
-                st.session_state.last_response_images = []
-                st.session_state.last_response_image_captions = []
-                logger.debug("No image to store in session state")
+            # Clear image state (text-only response)
+            st.session_state.last_response_images = []
+            st.session_state.last_response_image_captions = []
 
             return response
 
         except Exception as e:
-            return f"❌ RAG Error: {str(e)}"
+            return f"❌ Text RAG Error: {str(e)}"
+
+    def _generate_image_response(
+        self, query: str, llm_model, embedding_strategy
+    ) -> str:
+        """Generate response from image collection only."""
+        try:
+            # Get image manager
+            image_manager = self.session_manager.get_image_qdrant_manager()
+
+            if not image_manager:
+                return (
+                    "❌ No image collection available. "
+                    "Please upload documents with images first."
+                )
+
+            # Embed query
+            query_embedding = embedding_strategy.embed_query(query)
+
+            # Search image collection
+            image_score_threshold = self.session_manager.get_image_score_threshold()
+            image_top_k = self.session_manager.get("image_top_k", 3)
+
+            image_results = image_manager.search(
+                query_vector=query_embedding,
+                top_k=image_top_k,
+                score_threshold=image_score_threshold,
+            )
+
+            if not image_results:
+                return (
+                    "❌ No relevant images found matching your query. "
+                    "Try rephrasing or ask about text content instead."
+                )
+
+            # Get top image
+            top_image = image_results[0]
+            caption = top_image["payload"].get("chunk", "")
+            image_path = top_image["payload"].get("image_path", "")
+            image_score = top_image["score"]
+            page_number = top_image["payload"].get("page_number")
+            source_doc = top_image["payload"].get("source_document", "")
+
+            # Display in sidebar
+            self._display_sidebar_image_results(image_results)
+
+            # Build image context
+            if PROMPT_BUILDER_AVAILABLE:
+                image_context = PromptBuilder.format_image_context(
+                    image_caption=caption,
+                    page_number=page_number,
+                    source_document=source_doc,
+                    score=image_score,
+                )
+            else:
+                image_context = f"Image Description: {caption}"
+
+            # Generate response about the image
+            chat_history = self.session_manager.get("chat_history", [])
+
+            if PROMPT_BUILDER_AVAILABLE:
+                full_prompt = PromptBuilder.build_rag_prompt_with_images(
+                    query=query,
+                    text_context="",  # No text context
+                    image_context=image_context,
+                    chat_history=chat_history if chat_history else None,
+                )
+                response = llm_model.generate_content(prompt=full_prompt)
+            else:
+                response = llm_model.generate_content(
+                    prompt=query,
+                    context=image_context
+                )
+
+            # Attribution
+            response += "\n\n---\n*🖼️ Answer based on 1 image*"
+
+            # Store image for display
+            if image_path and self._validate_image_file(image_path):
+                st.session_state.last_response_images = [image_path]
+                st.session_state.last_response_image_captions = [caption]
+                logger.info(f"Stored image for display: {image_path}")
+            else:
+                st.session_state.last_response_images = []
+                st.session_state.last_response_image_captions = []
+
+            return response
+
+        except Exception as e:
+            return f"❌ Image RAG Error: {str(e)}"
+
+    def _display_sidebar_text_results(self, retrieved_chunks: List[tuple]) -> None:
+        """Display retrieved text chunks in sidebar."""
+        with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
+            for i, (chunk, score) in enumerate(retrieved_chunks, 1):
+                st.markdown(f"**Doc {i}** (Score: {score:.3f})")
+                st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
+                st.markdown("---")
+
+    def _display_sidebar_image_results(self, image_results: List[Dict]) -> None:
+        """Display retrieved images in sidebar."""
+        with st.sidebar.expander("🖼️ Retrieved Images", expanded=False):
+            for i, img_result in enumerate(image_results, 1):
+                payload = img_result["payload"]
+                img_score = img_result["score"]
+                img_caption = payload.get("chunk", "No caption")
+                img_path = payload.get("image_path", "")
+                page_num = payload.get("page_number", "?")
+
+                st.markdown(f"**Image {i}** (Score: {img_score:.3f})")
+                st.markdown(f"📍 Page: {page_num}")
+
+                if img_path and self._validate_image_file(img_path):
+                    st.image(img_path, width=200)
+                else:
+                    st.warning("⚠️ Image file not found")
+
+                caption_display = (
+                    img_caption[:150] + "..."
+                    if len(img_caption) > 150
+                    else img_caption
+                )
+                st.caption(f"📝 {caption_display}")
+                st.markdown("---")
 
     def _generate_llm_only_response(self, query: str, llm_model) -> str:
         """Generate response using LLM only (no RAG)."""

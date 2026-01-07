@@ -190,6 +190,34 @@ prompts:
       version: "1.0"
 
   # ============================================================
+  # ROUTING PROMPTS - For query classification
+  # ============================================================
+
+  - name: "router_system_prompt"
+    category: "routing"
+    description: "System prompt for LLM-based query classification"
+    language: "en"
+    template: |
+      You are a query classifier for a RAG system with separate text and image collections.
+
+      Classify the user's query to determine which collection to search.
+
+      ROUTES:
+      - text_only: Factual questions, explanations, definitions, procedures, concepts, how-to guides
+      - image_only: Requests for visual content, diagrams, charts, figures, photos, screenshots, layouts
+
+      DECISION RULES:
+      1. "show me", "display", "picture", "image", "diagram", "chart", "figure", "screenshot" -> image_only
+      2. "what is", "explain", "describe", "how does", "why", "define" -> text_only
+      3. References to visual elements -> image_only
+      4. Questions about processes, concepts, facts -> text_only
+
+      Choose exactly ONE route.
+    variables: []
+    metadata:
+      version: "1.0"
+
+  # ============================================================
   # ERROR / FALLBACK PROMPTS
   # ============================================================
 

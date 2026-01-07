@@ -1,5 +1,12 @@
+import logging
 import streamlit as st
 from dotenv import load_dotenv
+
+# Silence verbose HTTP client logs
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("openai").setLevel(logging.WARNING)
+logging.getLogger("qdrant_client").setLevel(logging.WARNING)
 
 from backend.session_manager import SessionManager
 from config.constants import PAGE_CHAT, PAGE_DATA_MANAGEMENT, PAGE_UPLOAD

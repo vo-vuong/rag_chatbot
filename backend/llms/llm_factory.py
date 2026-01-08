@@ -1,7 +1,5 @@
 from typing import List
 
-from backend.llms.gemini_llm import GeminiLLM
-from backend.llms.local_llm import LocalLLMStrategy
 from backend.llms.online_llm import OnlineLLMStrategy
 from backend.llms.openai_llm import OpenAILLM
 
@@ -9,13 +7,12 @@ from backend.llms.openai_llm import OpenAILLM
 class LLMFactory:
     """
     Factory for creating LLM adapters.
-    Supports both Online and Local LLM strategies.
+    Supports OpenAI LLM strategy.
     """
 
     # Online provider registry
     ONLINE_PROVIDERS = {
         "openai": OpenAILLM,
-        "gemini": GeminiLLM,
     }
 
     @staticmethod
@@ -29,7 +26,7 @@ class LLMFactory:
         Create online LLM adapter.
 
         Args:
-            provider_name: Provider name ('openai', 'gemini')
+            provider_name: Provider name ('openai')
             api_key: API key
             model_version: Model version
             **kwargs: Additional provider-specific arguments
@@ -53,29 +50,6 @@ class LLMFactory:
             api_key=api_key,
             model_version=model_version,
             **kwargs,
-        )
-
-    @staticmethod
-    def create_local_llm(
-        model_name: str,
-        host: str = "localhost",
-        port: int = 11434,
-    ) -> LocalLLMStrategy:
-        """
-        Create local LLM adapter (Ollama).
-
-        Args:
-            model_name: Local model name
-            host: Ollama host
-            port: Ollama port
-
-        Returns:
-            Local LLM adapter instance
-        """
-        return LocalLLMStrategy(
-            model_name=model_name,
-            host=host,
-            port=port,
         )
 
     @staticmethod

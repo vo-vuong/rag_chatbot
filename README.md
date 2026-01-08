@@ -4,7 +4,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system built with Stream
 
 ## ✨ Key Features
 
-- 🤖 **Multi-LLM Support**: OpenAI (GPT-4o/Mini), Google Gemini Pro
+- 🤖 **OpenAI Integration**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
 - 🖼️ **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
 - 📄 **Hybrid Chunking**: 5-stage pipeline combining layout-aware + semantic chunking (Phase 04 complete)
 - 🧠 **Smart Processing**: 5-tier PDF strategies, streaming CSV pipeline, OCR with 125+ languages
@@ -81,7 +81,6 @@ Visit `http://localhost:8501` to access the application.
 
 ```bash
 OPENAI_API_KEY=sk-...
-GEMINI_API_KEY=...      # Optional
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 ```
@@ -124,6 +123,6 @@ Comprehensive documentation available in `docs/`:
 ## 🛠️ Technology Stack
 
 **Core**: Python 3.11+, Streamlit 1.29+, Qdrant 1.12.5, LangChain 0.1+
-**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), Google Gemini, sentence-transformers
+**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), sentence-transformers
 **Processing**: Docling 2.0+, EasyOCR, pandas, pytesseract, Pillow, imagehash, tiktoken
 **Infrastructure**: Docker Compose, conda environment management

@@ -93,14 +93,10 @@ ASSISTANT = "assistant"
 # LLM TYPES & PROVIDERS
 # ============================================================
 ONLINE_LLM = "online_llm"
-LOCAL_LLM = "local_llm"
 
-GEMINI = "Gemini"
 OPENAI = "OpenAI"
-OLLAMA = "Ollama"
 
 # Default values
-DEFAULT_LOCAL_LLM = "llama3.2:3b"
 DEFAULT_CHUNK_SIZE = 200
 DEFAULT_CHUNK_OVERLAP = 20
 DEFAULT_NUM_RETRIEVAL = 3

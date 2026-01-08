@@ -12,7 +12,7 @@ class OnlineLLMStrategy(LLMStrategy):
         Initialize online LLM adapter.
 
         Args:
-            provider_name: Name of provider ('openai', 'gemini')
+            provider_name: Name of provider ('openai')
             api_key: API key for authentication
             model_version: Model version to use
         """

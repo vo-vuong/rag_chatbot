@@ -63,12 +63,10 @@ class SessionManager:
             # ============================================================
             # LLM CONFIGURATION
             # ============================================================
-            'llm_type': None,  # 'online_llm' or 'local_llm'
+            'llm_type': 'online_llm',  # OpenAI only
             'llm_name': None,  # Model name
-            'online_llms': None,  # Online LLM instance
-            'llm_api_key': None,  # API key for online LLM
-            'llm_choice': None,  # 'Online' or 'Local (Ollama)'
-            'local_llms': None,  # Local LLM instance
+            'online_llms': None,  # Online LLM instance (legacy)
+            'llm_api_key': None,  # API key for OpenAI
             'model_version': None,  # Specific model version
             'selected_model_display': None,  # Display name
             'llm_model': None,  # OpenAILLM instance
@@ -658,9 +656,6 @@ class SessionManager:
         """Check if LLM is configured."""
         llm_model = self.get('llm_model')
         is_configured = llm_model is not None
-        # online_llms = self.get('online_llms')
-        # local_llms = self.get('local_llms')
-        # is_configured = online_llms is not None or local_llms is not None
         logger.debug("LLM configured: %s", is_configured)
         return is_configured
 

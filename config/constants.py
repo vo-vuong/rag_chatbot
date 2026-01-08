@@ -61,7 +61,7 @@ AGENTIC_CHUNKER = "AgenticChunker"
 DOCLING_CONFIG = {
     "ocr": {
         "enabled": True,
-        "engine": "easyocr",  # "easyocr" or "tesseract"
+        "engine": "easyocr",
         "languages": ["en", "vi"],
         "confidence_threshold": 0.5,
     },

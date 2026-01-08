@@ -14,7 +14,6 @@ from config.constants import (
     DOCLING_CONFIG,
 )
 
-from .ocr.tesseract_ocr import get_tesseract_ocr, is_ocr_available
 from .strategies.docling_pdf_strategy import DoclingPDFStrategy
 from .strategies.csv_strategy import CSVProcessingStrategy
 from .strategies.interfaces import DocumentProcessingStrategy
@@ -363,13 +362,8 @@ class DocumentProcessor:
             },
         }
 
-        # Add OCR information if available
-        try:
-            if is_ocr_available():
-                ocr = get_tesseract_ocr()
-                config_info["ocr_info"] = ocr.get_ocr_info()
-        except Exception:
-            config_info["ocr_info"] = {"error": "OCR not available"}
+        # OCR is handled by Docling's EasyOCR - no separate OCR config needed
+        config_info["ocr_info"] = {"engine": "easyocr", "provider": "docling"}
 
         return config_info
 

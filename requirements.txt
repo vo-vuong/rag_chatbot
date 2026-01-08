@@ -195,7 +195,6 @@ pypdf==6.3.0
 pypdfium2==4.30.0
 pyperclip==1.11.0
 pyreadline3==3.5.4
-pytesseract==0.3.13
 pytest==9.0.1
 pytest-cov @ file:///C:/miniconda3/conda-bld/pytest-cov_1761560169811/work
 python-bidi==0.6.7

@@ -19,7 +19,6 @@ A production-ready Retrieval-Augmented Generation (RAG) system built with Stream
 - Python 3.11+
 - Conda (environment management)
 - Docker & Docker Compose (for Qdrant)
-- Tesseract OCR (system-level installation)
 
 ### Installation
 
@@ -124,5 +123,5 @@ Comprehensive documentation available in `docs/`:
 
 **Core**: Python 3.11+, Streamlit 1.29+, Qdrant 1.12.5, LangChain 0.1+
 **AI/ML**: OpenAI (GPT-4o/embeddings/Vision), sentence-transformers
-**Processing**: Docling 2.0+, EasyOCR, pandas, pytesseract, Pillow, imagehash, tiktoken
+**Processing**: Docling 2.0+, EasyOCR, pandas, Pillow, imagehash, tiktoken
 **Infrastructure**: Docker Compose, conda environment management

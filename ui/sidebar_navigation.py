@@ -428,6 +428,9 @@ class SidebarNavigation:
         """Render system statistics."""
         st.sidebar.subheader("📊 System Status")
 
+        # API Connection Status
+        self._render_api_status()
+
         status = self.session_manager.get_status_summary()
 
         for component, is_ready in status.items():
@@ -443,3 +446,16 @@ class SidebarNavigation:
                 st.sidebar.metric("📄 Total Documents", doc_count)
             except Exception:
                 pass
+
+    def _render_api_status(self) -> None:
+        """Show API connection status in sidebar."""
+        from ui.api_client import get_api_client
+
+        try:
+            api_client = get_api_client()
+            if api_client.health_check():
+                st.sidebar.success("API: Connected")
+            else:
+                st.sidebar.error("API: Disconnected")
+        except Exception:
+            st.sidebar.warning("API: Not initialized")

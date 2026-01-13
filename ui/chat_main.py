@@ -321,36 +321,6 @@ class ChatMainUI:
                 st.error(f"🖼️ Error displaying image: {str(e)}")
                 logger.error(f"Failed to display image {img_path}: {e}")
 
-    def display_response_with_images(self, response_text: str, image_paths: List[str]) -> None:
-        """Display text response with associated images below."""
-        # Display text response (existing functionality)
-        st.markdown("### 🤖 Assistant Response")
-        st.markdown(response_text)
-
-        # Display images if available
-        if image_paths:
-            st.markdown("### 📎 Related Images")
-            self._display_images(image_paths)
-
-    def _display_images(self, image_paths: List[str]) -> None:
-        """Display images with error handling."""
-        for i, img_path in enumerate(image_paths):
-            try:
-                if self._validate_image_file(img_path):
-                    # Display image with caption
-                    st.image(
-                        img_path,
-                        caption=f"Extracted from document (Image {i+1})",
-                        width=600,
-                        output_format="auto"
-                    )
-                else:
-                    # Show error for missing image
-                    st.error(f"🖼️ Image {i+1}: File not found or corrupted")
-
-            except Exception as e:
-                st.error(f"🖼️ Image {i+1}: Error loading image - {str(e)}")
-
     def _validate_image_file(self, image_path: str) -> bool:
         """Validate if image file is accessible and valid."""
         try:
@@ -392,15 +362,3 @@ class ChatMainUI:
         except Exception as e:
             logger.error(f"Image validation error: {e}")
             return False
-
-    def render_sidebar_stats(self) -> None:
-        """Render chat statistics in sidebar."""
-        chat_history = self.session_manager.get("chat_history", [])
-
-        if chat_history:
-            st.sidebar.markdown("### 💬 Chat Stats")
-            st.sidebar.metric("Messages", len(chat_history))
-
-            if st.sidebar.button("🗑️ Clear Chat"):
-                self.session_manager.clear_chat_history()
-                st.rerun()

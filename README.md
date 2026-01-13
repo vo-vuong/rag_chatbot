@@ -1,6 +1,6 @@
 # RAG Chatbot
 
-A production-ready Retrieval-Augmented Generation (RAG) system built with Streamlit enabling intelligent document Q&A through advanced processing, OCR capabilities, and multimodal AI-powered retrieval.
+A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and Streamlit frontend enabling intelligent document Q&A through advanced processing, OCR capabilities, and multimodal AI-powered retrieval.
 
 ## ✨ Key Features
 
@@ -11,6 +11,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system built with Stream
 - 💾 **Vector Database**: Qdrant integration with dual collections (text + images)
 - 🔄 **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes
 - 🗂️ **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
+- 🌐 **REST API**: FastAPI backend with SSE streaming, health checks, CORS support
 
 ## 🚀 Quick Start
 
@@ -41,11 +42,15 @@ cp .env.example .env
 # 5. Start Qdrant
 docker-compose up -d
 
-# 6. Run application
+# 6. Run FastAPI backend
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+
+# 7. Run Streamlit frontend (new terminal)
 streamlit run app.py
 ```
 
-Visit `http://localhost:8501` to access the application.
+- Backend API: `http://localhost:8000` (Swagger docs at `/docs`)
+- Frontend UI: `http://localhost:8501`
 
 ### Basic Workflow
 
@@ -87,27 +92,48 @@ QDRANT_PORT=6333
 ## 🏗️ Architecture
 
 ```
-┌───────────────────┐
-│   Streamlit UI    │ (Chat, Upload, Data Management)
-├───────────────────┤
-│  Session Manager  │ (Singleton state & Multimodal settings)
-├───────────────────┤
-│ Document Processor│ (Orchestrator with PDF/CSV strategies)
-├───────────────────┤
-│   Vision Service  │ (GPT-4o Mini Vision & Caption Cache)
-├───────────────────┤
-│  Vector Database  │ (Qdrant: Text & Image collections)
-└───────────────────┘
+┌───────────────────┐     HTTP      ┌───────────────────┐
+│   Streamlit UI    │ ───────────►  │   FastAPI API     │
+│ (localhost:8501)  │               │ (localhost:8000)  │
+├───────────────────┤               ├───────────────────┤
+│  StreamlitAPI     │               │  /api/v1/chat     │
+│  Client (httpx)   │               │  /api/v1/rag      │
+└───────────────────┘               │  /api/v1/health   │
+                                    └─────────┬─────────┘
+                                              │
+                          ┌───────────────────┼───────────────────┐
+                          ▼                   ▼                   ▼
+                   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+                   │ChatService  │    │RAGService   │    │SessionSvc   │
+                   │(Orchestrate)│    │(Retrieval)  │    │(State)      │
+                   └─────────────┘    └─────────────┘    └─────────────┘
+                          │
+              ┌───────────┴───────────┐
+              ▼                       ▼
+       ┌─────────────┐         ┌─────────────┐
+       │ QueryRouter │         │ Qdrant DB   │
+       │ (LLM-based) │         │ (Vector)    │
+       └─────────────┘         └─────────────┘
 ```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/v1/chat/query` | POST | Synchronous chat with RAG |
+| `/api/v1/chat/query/stream` | POST | SSE streaming chat |
+| `/api/v1/rag/search` | POST | Vector search without LLM |
+| `/api/v1/health` | GET | Health check with Qdrant status |
 
 ## 🔧 Development
 
-The project uses a modular architecture with Strategy, Factory, and Singleton patterns.
+The project uses a modular architecture with Strategy, Factory, Singleton, and Dependency Injection patterns.
 
+- `api/`: FastAPI backend (routers, services, models)
 - `backend/`: Core logic (document processing, vision, embeddings, LLMs)
-- `ui/`: Streamlit components and page routing
+- `ui/`: Streamlit components and API client
 - `config/`: Application constants and defaults
-- `tests/`: Pytest suite (focused on vision module)
+- `tests/`: Pytest suite (API, services, UI client)
 
 ## 📚 Documentation
 
@@ -121,7 +147,8 @@ Comprehensive documentation available in `docs/`:
 
 ## 🛠️ Technology Stack
 
-**Core**: Python 3.11+, Streamlit 1.29+, Qdrant 1.12.5, LangChain 0.1+
-**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), sentence-transformers
+**Core**: Python 3.11+, FastAPI 0.128+, Streamlit 1.29+, Qdrant 1.15.0
+**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), LangChain 0.1+
 **Processing**: Docling 2.0+, EasyOCR, pandas, Pillow, imagehash, tiktoken
+**HTTP**: httpx (async-capable), uvicorn ASGI server
 **Infrastructure**: Docker Compose, conda environment management

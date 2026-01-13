@@ -152,3 +152,6 @@ CLAUDE.MD
 plans/
 extracted_images/
 repomix-output.md
+
+# Application logs
+logs/

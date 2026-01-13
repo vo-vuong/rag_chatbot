@@ -2,7 +2,12 @@ import logging
 import streamlit as st
 from dotenv import load_dotenv
 
-# Silence verbose HTTP client logs
+from config.logging_config import setup_logging
+
+# Setup logging with file rotation (logs/ui/app.log)
+setup_logging("ui")
+
+# Silence verbose HTTP client logs (after setup to preserve handlers)
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
 logging.getLogger("openai").setLevel(logging.WARNING)

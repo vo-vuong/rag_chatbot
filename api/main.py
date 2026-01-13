@@ -8,8 +8,10 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
 from api.routers import chat, health, rag
+from config.logging_config import setup_logging
 
-logging.basicConfig(level=logging.INFO)
+# Setup logging with file rotation (logs/api/app.log)
+setup_logging("api")
 logger = logging.getLogger(__name__)
 
 

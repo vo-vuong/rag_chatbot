@@ -100,12 +100,12 @@ class DataUploadUI:
 
     def _render_upload_section(self) -> None:
         """Render enhanced file upload section with PDF support."""
-        # Enhanced file uploader with both CSV and PDF support
+        # Enhanced file uploader with CSV, PDF, and DOCX support
         uploaded_files = st.file_uploader(
-            "Upload CSV and PDF files",
-            type=["csv", "pdf"],
+            "Upload CSV, PDF, and DOCX files",
+            type=["csv", "pdf", "docx"],
             accept_multiple_files=True,
-            help="Upload one or more CSV or PDF files. PDFs will be processed with OCR "
+            help="Upload CSV, PDF, or DOCX files. PDFs support optional OCR."
         )
 
         if uploaded_files:
@@ -116,13 +116,23 @@ class DataUploadUI:
             # Display file analysis
             self._display_file_analysis(files_info)
 
-            # Show PDF processing options if PDFs are present
+            # Categorize files by type
             csv_files = [f for f in uploaded_files if f.name.lower().endswith(".csv")]
             pdf_files = [f for f in uploaded_files if f.name.lower().endswith(".pdf")]
+            docx_files = [f for f in uploaded_files if f.name.lower().endswith(".docx")]
 
-            if pdf_files:
-                st.subheader("📄 PDF Processing Configuration", divider="gray")
-                self._render_pdf_processing_options()
+            # Combined document files (PDF + DOCX)
+            document_files = pdf_files + docx_files
+
+            if document_files:
+                st.subheader("📄 Document Processing Configuration", divider="gray")
+
+                # Show OCR options only if PDFs are present
+                if pdf_files:
+                    self._render_pdf_processing_options()
+                else:
+                    # DOCX only - show info that OCR not needed
+                    st.info("💡 DOCX files have embedded text - no OCR required.")
 
             if csv_files:
                 st.subheader("📊 CSV Processing Configuration", divider="gray")
@@ -132,6 +142,36 @@ class DataUploadUI:
             st.divider()
             if st.button("🚀 Process Files", type="primary", use_container_width=True):
                 self._process_uploaded_files(uploaded_files)
+
+    def _get_file_type(self, filename: str) -> str:
+        """Determine file type from filename.
+
+        Args:
+            filename: Name of the file
+
+        Returns:
+            File type string (CSV, PDF, DOCX, or Unknown)
+        """
+        name_lower = filename.lower()
+        if name_lower.endswith(".csv"):
+            return "CSV"
+        elif name_lower.endswith(".pdf"):
+            return "PDF"
+        elif name_lower.endswith(".docx"):
+            return "DOCX"
+        return "Unknown"
+
+    def _get_file_icon(self, file_type: str) -> str:
+        """Get icon for file type.
+
+        Args:
+            file_type: Type of file (CSV, PDF, DOCX)
+
+        Returns:
+            Emoji icon for the file type
+        """
+        icons = {"CSV": "📊", "PDF": "📄", "DOCX": "📝"}
+        return icons.get(file_type, "📁")
 
     def _analyze_uploaded_files(self, uploaded_files: List) -> List[Dict]:
         """
@@ -147,18 +187,17 @@ class DataUploadUI:
         total_size_mb = 0
 
         for uploaded_file in uploaded_files:
+            file_type = self._get_file_type(uploaded_file.name)
             file_info = {
                 "name": uploaded_file.name,
-                "type": (
-                    "CSV" if uploaded_file.name.lower().endswith(".csv") else "PDF"
-                ),
+                "type": file_type,
                 "size_mb": round(uploaded_file.size / (1024 * 1024), 2),
                 "size_bytes": uploaded_file.size,
                 "warnings": [],
             }
 
-            # Add size warnings for PDFs
-            if file_info["type"] == "PDF":
+            # Add size warnings for PDFs and DOCX
+            if file_info["type"] in ("PDF", "DOCX"):
                 if file_info["size_mb"] > PDF_SIZE_LIMIT_MB:
                     file_info["warnings"].append(
                         f"⚠️ File too large ({file_info['size_mb']}MB >"
@@ -178,8 +217,8 @@ class DataUploadUI:
         """Display analysis of uploaded files."""
         st.subheader("📋 File Analysis", divider="gray")
 
-        # Summary metrics
-        col1, col2, col3 = st.columns(3)
+        # Summary metrics with DOCX support
+        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Files", len(files_info))
         with col2:
@@ -188,10 +227,13 @@ class DataUploadUI:
         with col3:
             pdf_count = sum(1 for f in files_info if f["type"] == "PDF")
             st.metric("PDF Files", pdf_count)
+        with col4:
+            docx_count = sum(1 for f in files_info if f["type"] == "DOCX")
+            st.metric("DOCX Files", docx_count)
 
         # Detailed file information
         for file_info in files_info:
-            file_type_icon = "📊" if file_info["type"] == "CSV" else "📄"
+            file_type_icon = self._get_file_icon(file_info["type"])
 
             with st.expander(
                 f"{file_type_icon} {file_info['name']} ({file_info['size_mb']} MB)",
@@ -580,6 +622,47 @@ class DataUploadUI:
                                 f"✅ PDF file processed: {len(chunks)} chunks created"
                             )
 
+                    elif file_extension == "docx":
+                        chunks, docx_metadata = self._process_docx_file(
+                            uploaded_file, details_text
+                        )
+                        if chunks:
+                            all_chunks.extend(chunks)
+                            processing_stats["processed_files"] += 1
+                            processing_stats["total_images"] += docx_metadata.get(
+                                "image_count", 0
+                            )
+                            processing_stats["total_cost"] += docx_metadata.get(
+                                "caption_cost", 0.0
+                            )
+
+                            # Store image data for later upload to Qdrant
+                            if "all_image_data" not in processing_stats:
+                                processing_stats["all_image_data"] = []
+                            if docx_metadata.get("image_data"):
+                                processing_stats["all_image_data"].extend(
+                                    docx_metadata["image_data"]
+                                )
+
+                            # Update metrics in real-time
+                            cost_metric.metric(
+                                "Caption Cost",
+                                f"${processing_stats['total_cost']:.4f}",
+                                help="Total GPT-4o Mini Vision API cost",
+                            )
+                            image_metric.metric(
+                                "Images",
+                                processing_stats["total_images"],
+                                help="Total images captioned",
+                            )
+                            chunk_metric.metric(
+                                "Chunks", len(all_chunks), help="Total chunks created"
+                            )
+
+                            details_text.success(
+                                f"✅ DOCX file processed: {len(chunks)} chunks created"
+                            )
+
                     else:
                         details_text.warning(
                             f"⚠️ Skipping unsupported file type: {file_extension}"
@@ -783,8 +866,8 @@ class DataUploadUI:
 
             # Create temporary file for processing
             with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+                temp_file_path = temp_file.name  # Assign path first for cleanup
                 temp_file.write(uploaded_file.read())
-                temp_file_path = temp_file.name
 
             try:
                 status_text.info("🔍 Step 3/5: Extracting text and images from PDF...")
@@ -933,6 +1016,130 @@ class DataUploadUI:
         except Exception as e:
             status_text.error(f"❌ Fallback processing failed: {str(e)}")
             return []
+
+    def _process_docx_file(self, uploaded_file, status_text) -> tuple:
+        """Process a single DOCX file using the session-managed document processor.
+
+        Uses same pipeline as PDF but without OCR options.
+
+        Args:
+            uploaded_file: Uploaded DOCX file object
+            status_text: Streamlit status text element for updates
+
+        Returns:
+            Tuple of (chunks, metadata_dict) where metadata_dict contains:
+                - image_count: number of images processed
+                - caption_cost: total caption cost
+                - total_chunks: number of chunks created
+                - image_data: list of image data for Qdrant upload
+        """
+        try:
+            status_text.info("📝 Step 1/4: Initializing DOCX processor...")
+
+            # Check if session manager has document processor available
+            if not self.session_manager.is_pdf_processor_available():
+                status_text.error(
+                    "❌ Document processor not available. Cannot process DOCX files."
+                )
+                return [], {}
+
+            status_text.info("📝 Step 2/4: Parsing DOCX structure...")
+
+            # Create temporary file for processing
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
+                temp_file_path = temp_file.name  # Assign path first for cleanup
+                temp_file.write(uploaded_file.read())
+
+            try:
+                status_text.info("🔍 Step 3/4: Extracting text and images from DOCX...")
+
+                # Process the DOCX using session-managed processor
+                result = self.session_manager.process_document_with_session(
+                    temp_file_path,
+                    languages=[self.session_manager.get("language", "en")],
+                    original_filename=uploaded_file.name,
+                    caption_failure_mode=self.session_manager.get(
+                        "caption_failure_mode", "graceful"
+                    ),
+                )
+
+                if result and result.success:
+                    # Check if images were extracted and captioned
+                    image_count = result.metadata.get('total_images', 0)
+                    caption_cost = result.metadata.get('caption_total_cost', 0.0)
+
+                    if image_count > 0:
+                        status_text.info(
+                            f"🖼️ Captioned {image_count} images "
+                            f"(Cost: ${caption_cost:.4f})"
+                        )
+
+                    status_text.info(
+                        f"✅ Step 4/4: Creating {len(result.elements)} text chunks..."
+                    )
+
+                    # Convert processing result to chunks
+                    chunks = []
+                    for i, element in enumerate(result.elements):
+                        # Preserve existing metadata from DoclingChunker
+                        elem_metadata = (
+                            element.metadata.copy()
+                            if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
+                            else {}
+                        )
+
+                        # Add/override with process-level metrics
+                        elem_metadata.update({
+                            "processing_strategy": (
+                                result.metrics.strategy_used
+                                if hasattr(result, 'metrics') and result.metrics
+                                else elem_metadata.get("source", "docling")
+                            ),
+                            "ocr_used": False,  # DOCX never uses OCR
+                        })
+
+                        chunk = {
+                            "chunk": element.text,
+                            "source_file": uploaded_file.name,
+                            "file_type": "DOCX",
+                            "chunk_index": i,
+                            "doc_id": str(uuid.uuid4()),
+                            "metadata": elem_metadata,
+                        }
+                        chunks.append(chunk)
+
+                    status_text.success(
+                        f"✅ DOCX processing complete! Created {len(chunks)} chunks. "
+                        f"Images: {image_count}, Caption cost: ${caption_cost:.4f}"
+                    )
+
+                    # Return chunks, metadata, and image data for Qdrant upload
+                    metadata = {
+                        "image_count": image_count,
+                        "caption_cost": caption_cost,
+                        "total_chunks": len(chunks),
+                        "image_data": (
+                            result.image_data if hasattr(result, 'image_data') else []
+                        ),
+                    }
+                    return chunks, metadata
+
+                else:
+                    error_msg = result.error_message if result else "Unknown error"
+                    status_text.error(f"❌ DOCX processing failed: {error_msg}")
+                    return [], {}
+
+            finally:
+                # Clean up temporary file
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+
+        except Exception as e:
+            status_text.error(f"❌ DOCX processing error: {str(e)}")
+            logger.error(
+                f"DOCX processing error for {uploaded_file.name}: {e}", exc_info=True
+            )
+            return [], {}
 
     def _display_processing_results(self, chunks: List[Dict], stats: Dict) -> None:
         """Display processing results and statistics."""

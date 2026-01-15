@@ -1,8 +1,10 @@
 """
-PDF processing strategy using Docling with OCR and table extraction.
+Document processing strategy using Docling for PDF and DOCX formats.
 
-Provides Vietnamese OCR support via EasyOCR, TableFormer ACCURATE mode for
-complex tables, and image extraction with Vision API captioning integration.
+Provides:
+- PDF: Vietnamese OCR support via EasyOCR, TableFormer ACCURATE mode for
+  complex tables, image extraction with Vision API captioning integration.
+- DOCX: Text extraction, table extraction, image handling without OCR.
 """
 
 import base64
@@ -21,8 +23,13 @@ from .results import ProcessingResult, ProcessingMetrics, ProcessingStatus
 logger = logging.getLogger(__name__)
 
 
-class DoclingPDFStrategy(DocumentProcessingStrategy):
-    """PDF processing using Docling with OCR, table extraction, and image handling."""
+class DoclingDocumentStrategy(DocumentProcessingStrategy):
+    """Document processing using Docling for PDF and DOCX formats.
+
+    Supports:
+    - PDF: OCR, table extraction, image handling
+    - DOCX: Text extraction, table extraction, image handling
+    """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         super().__init__(config)
@@ -42,14 +49,18 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         self.ocr_used = False
         self.last_strategy_used = "docling"
 
-        logger.info("DoclingPDFStrategy initialized")
+        logger.info("DoclingDocumentStrategy initialized")
 
     def _ensure_converter(self) -> None:
-        """Lazy initialize the DocumentConverter."""
+        """Lazy initialize the DocumentConverter for PDF and DOCX."""
         if self._converter_initialized:
             return
 
-        from docling.document_converter import DocumentConverter, PdfFormatOption
+        from docling.document_converter import (
+            DocumentConverter,
+            PdfFormatOption,
+            WordFormatOption,
+        )
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import (
             PdfPipelineOptions,
@@ -60,50 +71,52 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             AcceleratorDevice,
             AcceleratorOptions,
         )
+        from docling.pipeline.simple_pipeline import SimplePipeline
 
         ocr_config = self.docling_config.get("ocr", {})
         table_config = self.docling_config.get("table", {})
         accel_config = self.docling_config.get("acceleration", {})
 
-        opts = PdfPipelineOptions()
+        # --- PDF Pipeline Options ---
+        pdf_opts = PdfPipelineOptions()
 
-        # OCR configuration - respect mode from pdf config
+        # OCR configuration - respect mode from pdf config (PDF only)
         # Mode comes from UI selection: "no_ocr" (default) or "ocr"
         pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
         if pdf_mode == "ocr":
             # OCR enabled
-            opts.do_ocr = True
+            pdf_opts.do_ocr = True
             confidence = ocr_config.get("confidence_threshold", 0.5)
             if not isinstance(confidence, (int, float)) or not 0 <= confidence <= 1:
                 logger.warning(f"Invalid confidence_threshold {confidence}, using 0.5")
                 confidence = 0.5
-            opts.ocr_options = EasyOcrOptions(
+            pdf_opts.ocr_options = EasyOcrOptions(
                 lang=ocr_config.get("languages", ["en", "vi"]),
                 confidence_threshold=confidence,
             )
             logger.info(f"OCR enabled with languages: {ocr_config.get('languages', ['en', 'vi'])}")
         else:
             # no_ocr mode (default) - skip OCR for faster processing
-            opts.do_ocr = False
+            pdf_opts.do_ocr = False
             logger.info("OCR disabled (no_ocr mode - default)")
 
         # Table extraction
-        opts.do_table_structure = True
+        pdf_opts.do_table_structure = True
         mode = table_config.get("mode", "accurate")
-        opts.table_structure_options.mode = (
+        pdf_opts.table_structure_options.mode = (
             TableFormerMode.ACCURATE if mode == "accurate" else TableFormerMode.FAST
         )
-        opts.table_structure_options.do_cell_matching = table_config.get(
+        pdf_opts.table_structure_options.do_cell_matching = table_config.get(
             "do_cell_matching", True
         )
 
         # Image extraction with validation
-        opts.generate_picture_images = True
+        pdf_opts.generate_picture_images = True
         images_scale = self.docling_config.get("images_scale", 2.0)
         if not isinstance(images_scale, (int, float)) or images_scale <= 0:
             logger.warning(f"Invalid images_scale {images_scale}, using 2.0")
             images_scale = 2.0
-        opts.images_scale = images_scale
+        pdf_opts.images_scale = images_scale
 
         # Acceleration with validation
         device_str = accel_config.get("device", "auto")
@@ -117,16 +130,20 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         if not isinstance(num_threads, int) or num_threads < 1:
             logger.warning(f"Invalid num_threads {num_threads}, using 4")
             num_threads = 4
-        opts.accelerator_options = AcceleratorOptions(
+        pdf_opts.accelerator_options = AcceleratorOptions(
             num_threads=num_threads,
             device=device_map.get(device_str, AcceleratorDevice.AUTO),
         )
 
+        # --- Create Multi-Format Converter ---
         self.converter = DocumentConverter(
-            format_options={InputFormat.PDF: PdfFormatOption(pipeline_options=opts)}
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_opts),
+                InputFormat.DOCX: WordFormatOption(pipeline_cls=SimplePipeline),
+            }
         )
         self._converter_initialized = True
-        logger.info("Docling DocumentConverter initialized")
+        logger.info("Docling DocumentConverter initialized for PDF and DOCX")
 
     def _init_captioner(self) -> None:
         """Initialize image captioner with Vision API."""
@@ -148,7 +165,7 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
     @property
     def supported_extensions(self) -> List[str]:
         """Return supported file extensions."""
-        return [".pdf"]
+        return [".pdf", ".docx"]
 
     @property
     def strategy_name(self) -> str:
@@ -160,13 +177,14 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
         return self.get_file_extension(file_path) in self.supported_extensions
 
     def extract_elements(self, file_path: str, **kwargs) -> ProcessingResult:
-        """Extract elements from PDF using Docling."""
+        """Extract elements from PDF or DOCX using Docling."""
         return self.process(file_path, **kwargs)
 
     def process(self, file_path: str, **kwargs) -> ProcessingResult:
-        """Process PDF file using Docling."""
+        """Process PDF or DOCX file using Docling."""
         start_time = time.time()
         file_path = Path(file_path)
+        file_ext = file_path.suffix.lower()
 
         try:
             # Validate file
@@ -181,13 +199,13 @@ class DoclingPDFStrategy(DocumentProcessingStrategy):
             if self.openai_api_key:
                 self._init_captioner()
 
-            # Convert PDF
+            # Convert document (Docling auto-detects format)
             result = self.converter.convert(source=str(file_path))
             doc = result.document
 
-            # Check OCR usage - based on actual mode used
+            # OCR tracking - only applies to PDF
             pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
-            self.ocr_used = pdf_mode == "ocr"
+            self.ocr_used = file_ext == ".pdf" and pdf_mode == "ocr"
 
             # Extract images
             image_data = self._extract_images(doc, file_path)

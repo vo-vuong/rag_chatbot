@@ -7,7 +7,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI back
 - 🤖 **OpenAI Integration**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
 - 🖼️ **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
 - 📄 **Hybrid Chunking**: 5-stage pipeline combining layout-aware + semantic chunking (Phase 04 complete)
-- 🧠 **Smart Processing**: 5-tier PDF strategies, streaming CSV pipeline, OCR with 125+ languages
+- 🧠 **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with 125+ languages
 - 💾 **Vector Database**: Qdrant integration with dual collections (text + images)
 - 🔄 **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes
 - 🗂️ **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
@@ -55,7 +55,7 @@ streamlit run app.py
 ### Basic Workflow
 
 1. **Setup**: Configure API keys in the sidebar
-2. **Upload**: Add PDF/CSV files via Upload page; select processing strategy
+2. **Upload**: Add PDF/CSV/DOCX files via Upload page; select processing strategy
 3. **Vision Config**: Set caption failure mode (Graceful/Strict/Skip) for multimodal PDFs
 4. **Chat**: Query your documents; results include relevant text and images
 5. **Manage**: Inspect collections and pagination via Data Management
@@ -65,11 +65,12 @@ streamlit run app.py
 ### Supported Formats
 
 - **PDF**: Docling-powered processing with EasyOCR (en, vi), TableFormer tables, GPU acceleration
+- **DOCX**: Docling-powered processing with same chunking and image captioning as PDF
 - **CSV**: Streaming processing with column-based grouping and memory optimization
 
 ### Processing Features
 
-- **Docling PDF Strategy**: Modern PDF processing with OCR, table extraction, and image handling
+- **Docling Document Strategy**: Modern PDF/DOCX processing with OCR, table extraction, and image handling
 - **Token-Aware Chunking**: 512 max tokens optimized for RAG retrieval performance
 - **Post-Processing Overlap**: 50 tokens overlap for context continuity
 - **Vision API Integration**: GPT-4o Mini image captioning with MD5 caching

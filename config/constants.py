@@ -124,7 +124,7 @@ HYDE_SEARCH = "Hyde Search"
 # ============================================================
 # FILE TYPES
 # ============================================================
-SUPPORTED_FILE_TYPES = ["csv", "pdf"]
+SUPPORTED_FILE_TYPES = ["csv", "pdf", "docx"]
 
 # ============================================================
 # PDF PROCESSING (Docling)

@@ -23,19 +23,20 @@ STRATEGY_REGISTRY: Dict[str, Type] = {
     ".csv": CSVProcessingStrategy,
 }
 
-# Import Docling PDF strategy (primary)
+# Import Docling document strategy (primary - supports PDF and DOCX)
 try:
-    from .docling_pdf_strategy import DoclingPDFStrategy
+    from .docling_document_strategy import DoclingDocumentStrategy
 
-    STRATEGY_REGISTRY[".pdf"] = DoclingPDFStrategy
-    __all__.append("DoclingPDFStrategy")
+    STRATEGY_REGISTRY[".pdf"] = DoclingDocumentStrategy
+    STRATEGY_REGISTRY[".docx"] = DoclingDocumentStrategy
+    __all__.append("DoclingDocumentStrategy")
 except ImportError as e:
     # Docling strategy not available due to missing dependencies
     import logging
 
     logger = logging.getLogger(__name__)
-    logger.warning(f"Docling PDF strategy not available: {e}")
-    DoclingPDFStrategy = None
+    logger.warning(f"Docling document strategy not available: {e}")
+    DoclingDocumentStrategy = None
 
 
 def get_strategy_for_file(

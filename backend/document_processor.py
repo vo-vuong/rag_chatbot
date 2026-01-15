@@ -14,7 +14,7 @@ from config.constants import (
     DOCLING_CONFIG,
 )
 
-from .strategies.docling_pdf_strategy import DoclingPDFStrategy
+from .strategies.docling_document_strategy import DoclingDocumentStrategy
 from .strategies.csv_strategy import CSVProcessingStrategy
 from .strategies.interfaces import DocumentProcessingStrategy
 from .strategies.results import ProcessingResult
@@ -24,7 +24,8 @@ logger = logging.getLogger(__name__)
 
 # Supported file types and their corresponding strategies
 SUPPORTED_FILE_TYPES: Dict[str, type[DocumentProcessingStrategy]] = {
-    ".pdf": DoclingPDFStrategy,
+    ".pdf": DoclingDocumentStrategy,
+    ".docx": DoclingDocumentStrategy,
 }
 
 # Default processing configurations
@@ -93,7 +94,7 @@ class DocumentProcessor:
             raise
 
     def _init_docling_strategy(self, pdf_config: dict, ocr_config: dict) -> None:
-        """Initialize Docling PDF strategy."""
+        """Initialize Docling document strategy for PDF and DOCX."""
         # Merge config with defaults
         docling_config = {**DOCLING_CONFIG, **self.config.get("docling", {})}
 
@@ -102,15 +103,17 @@ class DocumentProcessor:
             docling_config["ocr"]["languages"] = ocr_config["languages"]
 
         # Create Docling strategy
-        docling_strategy = DoclingPDFStrategy(
+        docling_strategy = DoclingDocumentStrategy(
             config={
                 **self.config,
                 "docling": docling_config,
             }
         )
 
+        # Register for both PDF and DOCX
         self.strategies[".pdf"] = docling_strategy
-        self.logger.info("Docling PDF strategy initialized")
+        self.strategies[".docx"] = docling_strategy
+        self.logger.info("Docling document strategy initialized for PDF and DOCX")
 
     def _init_csv_strategy(self) -> None:
         """Initialize CSV strategy."""
@@ -178,7 +181,7 @@ class DocumentProcessor:
                 return ProcessingResult(success=False, error_message=error_msg)
 
             # Pass openai_api_key to strategy if needed (for re-initialization with API key)
-            if openai_api_key and file_extension == ".pdf":
+            if openai_api_key and file_extension in [".pdf", ".docx"]:
                 # Update config with API key
                 updated_config = {**self.config, "openai_api_key": openai_api_key}
                 updated_config["pdf"] = {
@@ -195,7 +198,7 @@ class DocumentProcessor:
                 updated_config["docling"] = docling_config
 
                 # Create fresh Docling strategy with API key
-                strategy = DoclingPDFStrategy(config=updated_config)
+                strategy = DoclingDocumentStrategy(config=updated_config)
 
             # Process document with strategy
             result = strategy.extract_elements(

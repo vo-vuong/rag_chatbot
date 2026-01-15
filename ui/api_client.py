@@ -21,9 +21,10 @@ class APIResponse:
     response: str
     route: Optional[str]
     route_reasoning: Optional[str]
-    retrieved_chunks: List[tuple]  # [(text, score), ...]
+    retrieved_chunks: List[tuple]  # [(text, score, source_file), ...]
     image_paths: List[str]
     image_captions: List[str]
+    image_source_files: List[str]  # Source documents for images
 
 
 @dataclass
@@ -87,10 +88,14 @@ class StreamlitAPIClient:
             route=data.get("route"),
             route_reasoning=data.get("route_reasoning"),
             retrieved_chunks=[
-                (c["text"], c["score"]) for c in data.get("retrieved_chunks", [])
+                (c["text"], c["score"], c.get("source_file", "Unknown"))
+                for c in data.get("retrieved_chunks", [])
             ],
             image_paths=[img["image_path"] for img in data.get("images", [])],
             image_captions=[img["caption"] for img in data.get("images", [])],
+            image_source_files=[
+                img.get("source_file", "Unknown") for img in data.get("images", [])
+            ],
         )
 
     def chat_stream(

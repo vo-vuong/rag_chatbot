@@ -207,8 +207,11 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
             self.ocr_used = file_ext == ".pdf" and pdf_mode == "ocr"
 
+            # Get original filename from kwargs (UI passes this for uploaded files)
+            original_filename = kwargs.get("original_filename")
+
             # Extract images
-            image_data = self._extract_images(doc, file_path)
+            image_data = self._extract_images(doc, file_path, original_filename)
 
             # Caption images (uses Vision API if available, else fallback)
             if image_data:
@@ -305,11 +308,23 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
 
         return full_context.strip()
 
-    def _extract_images(self, doc, file_path: Path) -> List[Dict[str, Any]]:
-        """Extract images from Docling document."""
+    def _extract_images(
+        self, doc, file_path: Path, original_filename: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """Extract images from Docling document.
+
+        Args:
+            doc: Docling document object
+            file_path: Path to the document file (may be temp file)
+            original_filename: Original filename from upload (preferred for metadata)
+        """
         from backend.utils.image_storage import ImageStorageUtility
 
         image_data = []
+
+        # Use original filename if available, otherwise fall back to file_path
+        display_name = original_filename or file_path.name
+        display_stem = Path(display_name).stem if original_filename else file_path.stem
 
         storage = ImageStorageUtility(
             base_storage_path=self.config.get("pdf", {}).get(
@@ -346,7 +361,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
                 # Save image using storage utility
                 img_path, _ = storage.store_image(
                     image_data=img_bytes,
-                    original_filename=f"page_{page_num}_{file_path.stem}_{i}",
+                    original_filename=f"page_{page_num}_{display_stem}_{i}",
                     page_number=page_num,
                     bbox=tuple(bbox.values()) if bbox else None,
                 )
@@ -374,6 +389,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
                     "surrounding_context": surrounding_context,  # NEW: for Vision API
                     "image_hash": image_hash,
                     "page_number": page_num,
+                    "source_file": display_name,  # Track source document (original filename)
                     "image_metadata": {
                         "width": width,
                         "height": height,

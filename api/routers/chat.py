@@ -37,7 +37,8 @@ async def chat_query(
             route=result.route,
             route_reasoning=result.route_reasoning,
             retrieved_chunks=[
-                RetrievedChunk(text=t, score=s) for t, s in result.retrieved_chunks
+                RetrievedChunk(text=t, score=s, source_file=src)
+                for t, s, src in result.retrieved_chunks
             ],
             images=[
                 ImageResult(
@@ -45,8 +46,13 @@ async def chat_query(
                     image_path=p,
                     score=0.0,
                     page_number=None,
+                    source_file=src,
                 )
-                for p, c in zip(result.image_paths, result.image_captions)
+                for p, c, src in zip(
+                    result.image_paths,
+                    result.image_captions,
+                    result.image_source_files or ["Unknown"] * len(result.image_paths),
+                )
             ],
             timestamp=datetime.utcnow(),
         )
@@ -78,7 +84,8 @@ async def chat_query_stream(
             # Emit context (retrieved chunks)
             if result.retrieved_chunks:
                 chunks_data = [
-                    {"text": t[:100], "score": s} for t, s in result.retrieved_chunks
+                    {"text": t[:100], "score": s, "source_file": src}
+                    for t, s, src in result.retrieved_chunks
                 ]
                 yield f"data: {json.dumps({'event': 'context', 'data': chunks_data})}\n\n"
 

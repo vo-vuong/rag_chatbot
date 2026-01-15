@@ -542,6 +542,9 @@ class DocumentProcessor:
                             "chunk": img[
                                 "caption"
                             ],  # Store caption in "chunk" field for consistency
+                            "source_file": img.get(
+                                "source_file", source_file
+                            ),  # Track source document
                             "surrounding_context": img.get("surrounding_context", ""),
                             "docling_caption": img.get("docling_caption", ""),
                             "image_path": img["image_path"],

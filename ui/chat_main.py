@@ -152,6 +152,14 @@ class ChatMainUI:
         # Display chat messages
         for message in chat_history:
             with st.chat_message(message["role"]):
+                # Display route indicator for assistant messages
+                if message["role"] == "assistant" and message.get("route"):
+                    route = message["route"]
+                    if route == "text_only":
+                        st.caption("🔤 Query type: **Text Search**")
+                    elif route == "image_only":
+                        st.caption("🖼️ Query type: **Image Search**")
+
                 st.markdown(message["content"])
 
                 # Display images if available in message
@@ -180,12 +188,23 @@ class ChatMainUI:
                     # Get image data from session state
                     image_paths = st.session_state.get("last_response_images", [])
                     image_captions = st.session_state.get("last_response_image_captions", [])
+                    image_source_files = st.session_state.get("last_response_image_source_files", [])
                     chat_mode = self.session_manager.get("chat_mode", "rag")  # Default to rag
+
+                    # Get route info from session state
+                    route = st.session_state.get("last_response_route")
 
                     logger.info(
                         f"After response: image_paths={image_paths}, "
-                        f"chat_mode={chat_mode}"
+                        f"chat_mode={chat_mode}, route={route}"
                     )
+
+                    # Display route indicator (only in RAG mode)
+                    if route and chat_mode == "rag":
+                        if route == "text_only":
+                            st.caption("🔤 Query type: **Text Search**")
+                        elif route == "image_only":
+                            st.caption("🖼️ Query type: **Image Search**")
 
                     # Display response
                     st.markdown(response)
@@ -193,24 +212,29 @@ class ChatMainUI:
                     # Display images if available
                     if image_paths and chat_mode == "rag":
                         logger.info("Calling _display_response_images")
-                        self._display_response_images(image_paths, image_captions)
+                        self._display_response_images(image_paths, image_captions, image_source_files)
                     else:
                         logger.info(
                             f"Skipping image display: paths={bool(image_paths)}, "
                             f"mode={chat_mode}"
                         )
 
-                    # Save message with images to chat history
-                    self._add_message("assistant", response, image_paths, image_captions)
+                    # Save message with images and route to chat history
+                    self._add_message("assistant", response, image_paths, image_captions, route)
 
                     # Clear stored images after display
                     if "last_response_images" in st.session_state:
                         del st.session_state.last_response_images
                     if "last_response_image_captions" in st.session_state:
                         del st.session_state.last_response_image_captions
+                    if "last_response_image_source_files" in st.session_state:
+                        del st.session_state.last_response_image_source_files
+                    # Clear route after display
+                    if "last_response_route" in st.session_state:
+                        del st.session_state.last_response_route
 
-    def _add_message(self, role: str, content: str, image_paths: List[str] = None, image_captions: List[str] = None) -> None:
-        """Add message to chat history with optional images."""
+    def _add_message(self, role: str, content: str, image_paths: List[str] = None, image_captions: List[str] = None, route: str = None) -> None:
+        """Add message to chat history with optional images and route."""
         chat_history = self.session_manager.get("chat_history", [])
         message = {"role": role, "content": content}
 
@@ -218,6 +242,10 @@ class ChatMainUI:
         if image_paths:
             message["image_paths"] = image_paths
             message["image_captions"] = image_captions or []
+
+        # Add route info if available
+        if route:
+            message["route"] = route
 
         chat_history.append(message)
         self.session_manager.set("chat_history", chat_history)
@@ -246,9 +274,14 @@ class ChatMainUI:
             if result.image_paths:
                 st.session_state.last_response_images = result.image_paths
                 st.session_state.last_response_image_captions = result.image_captions
+                st.session_state.last_response_image_source_files = result.image_source_files
             else:
                 st.session_state.last_response_images = []
                 st.session_state.last_response_image_captions = []
+                st.session_state.last_response_image_source_files = []
+
+            # Store route info for display
+            st.session_state.last_response_route = result.route
 
             return result.response
 
@@ -268,15 +301,17 @@ class ChatMainUI:
     def _display_sidebar_text_results(self, retrieved_chunks: List[tuple]) -> None:
         """Display retrieved text chunks in sidebar."""
         with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
-            for i, (chunk, score) in enumerate(retrieved_chunks, 1):
+            for i, (chunk, score, source_file) in enumerate(retrieved_chunks, 1):
                 st.markdown(f"**Doc {i}** (Score: {score:.3f})")
+                st.caption(f"📁 Source: `{source_file}`")
                 st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
                 st.markdown("---")
 
     def _display_response_images(
         self,
         image_paths: List[str],
-        captions: List[str]
+        captions: List[str],
+        source_files: List[str] = None
     ) -> None:
         """
         Display images with captions below response.
@@ -284,19 +319,29 @@ class ChatMainUI:
         Args:
             image_paths: List of image file paths
             captions: List of image captions (GPT-4o Mini generated)
+            source_files: List of source document names
         """
         import html
 
         logger.info(f"Displaying {len(image_paths)} image(s): {image_paths}")
 
+        # Ensure source_files list matches image_paths length
+        if not source_files:
+            source_files = ["Unknown"] * len(image_paths)
+
         st.markdown("### 📸 Relevant Image")
 
-        for i, (img_path, caption) in enumerate(zip(image_paths, captions)):
+        for i, (img_path, caption, source_file) in enumerate(
+            zip(image_paths, captions, source_files)
+        ):
             try:
                 logger.info(f"Validating image {i+1}: {img_path}")
                 if self._validate_image_file(img_path):
                     # Security: Sanitize caption to prevent XSS
                     safe_caption = html.escape(caption)
+
+                    # Display source document info
+                    st.caption(f"📁 Source: `{source_file}`")
 
                     # Display image with caption
                     st.image(
@@ -309,6 +354,7 @@ class ChatMainUI:
 
                     # Show image metadata in expander
                     with st.expander("ℹ️ Image Details", expanded=False):
+                        st.text(f"Source: {source_file}")
                         st.text(f"Path: {img_path}")
                         st.text(f"Caption: {safe_caption}")
 

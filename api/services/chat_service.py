@@ -23,9 +23,10 @@ class ChatResponse:
     response: str
     route: Optional[str]  # "text_only", "image_only", or None (llm_only)
     route_reasoning: Optional[str]
-    retrieved_chunks: List[tuple]  # [(text, score), ...]
+    retrieved_chunks: List[tuple]  # [(text, score, source_file), ...]
     image_paths: List[str]
     image_captions: List[str]
+    image_source_files: List[str]  # Source documents for images
 
 
 class ChatService:
@@ -75,6 +76,7 @@ class ChatService:
                 retrieved_chunks=[],
                 image_paths=[],
                 image_captions=[],
+                image_source_files=[],
             )
         else:
             result = self._generate_rag(query, session_id, top_k, score_threshold)
@@ -128,6 +130,7 @@ class ChatService:
                 retrieved_chunks=[],
                 image_paths=[],
                 image_captions=[],
+                image_source_files=[],
             )
 
         # Build context
@@ -157,6 +160,7 @@ class ChatService:
             retrieved_chunks=chunks,
             image_paths=[],
             image_captions=[],
+            image_source_files=[],
         )
 
     def _generate_image_response(
@@ -176,6 +180,7 @@ class ChatService:
                 retrieved_chunks=[],
                 image_paths=[],
                 image_captions=[],
+                image_source_files=[],
             )
 
         img = images[0]
@@ -203,6 +208,7 @@ class ChatService:
             retrieved_chunks=[],
             image_paths=[img.image_path] if img.image_path else [],
             image_captions=[img.caption],
+            image_source_files=[img.source_document] if img.source_document else [],
         )
 
     def _generate_llm_only(self, query: str, session_id: str) -> str:

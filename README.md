@@ -57,7 +57,7 @@ streamlit run app.py
 1. **Setup**: Configure API keys in the sidebar
 2. **Upload**: Add PDF/CSV/DOCX files via Upload page; select processing strategy
 3. **Vision Config**: Set caption failure mode (Graceful/Strict/Skip) for multimodal PDFs
-4. **Chat**: Query your documents; results include relevant text and images
+4. **Chat**: Query your documents; results include relevant text and images with source attribution
 5. **Manage**: Inspect collections and pagination via Data Management
 
 ## 📋 Document Processing

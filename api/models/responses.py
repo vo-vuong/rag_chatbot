@@ -13,6 +13,7 @@ class RetrievedChunk(BaseModel):
 
     text: str
     score: float
+    source_file: str = "Unknown"
 
 
 class ImageResult(BaseModel):
@@ -22,6 +23,7 @@ class ImageResult(BaseModel):
     image_path: str
     score: float
     page_number: Optional[int] = None
+    source_file: str = "Unknown"
 
 
 class ChatResponse(BaseModel):

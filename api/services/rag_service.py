@@ -69,12 +69,12 @@ class RAGService:
         query: str,
         top_k: int = 3,
         score_threshold: float = 0.5,
-    ) -> List[Tuple[str, float]]:
+    ) -> List[Tuple[str, float, str]]:
         """
         Search text collection.
 
         Returns:
-            List of (chunk_text, score) tuples
+            List of (chunk_text, score, source_file) tuples
         """
         query_embedding = self._embedding.embed_query(query)
         results = self._text_manager.search(
@@ -83,7 +83,11 @@ class RAGService:
             score_threshold=score_threshold,
         )
         return [
-            (r["payload"].get("chunk", ""), r["score"])
+            (
+                r["payload"].get("chunk", ""),
+                r["score"],
+                r["payload"].get("source_file", "Unknown"),
+            )
             for r in results
         ]
 
@@ -114,7 +118,7 @@ class RAGService:
                 image_path=r["payload"].get("image_path", ""),
                 score=r["score"],
                 page_number=r["payload"].get("page_number"),
-                source_document=r["payload"].get("source_document", ""),
+                source_document=r["payload"].get("source_file", "Unknown"),
             )
             for r in results
         ]

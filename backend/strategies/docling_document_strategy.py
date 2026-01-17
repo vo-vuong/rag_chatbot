@@ -246,8 +246,10 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
 
             # Chunk document using Docling HybridChunker (token-aware)
             chunking_config = self.docling_config.get("chunking", {})
+            # Use original_filename if provided, otherwise fall back to file_path.name
+            source_file = original_filename or file_path.name
             elements, chunking_metadata = self._chunk_document(
-                doc, image_paths, chunking_config
+                doc, image_paths, chunking_config, source_file
             )
 
             # Build ProcessingResult
@@ -522,6 +524,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
         doc: Any,
         image_paths: List[str],
         chunking_config: Dict[str, Any],
+        source_file: str = "Unknown",
     ) -> tuple:
         """
         Chunk document using Docling HybridChunker.
@@ -530,6 +533,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             doc: Docling DoclingDocument
             image_paths: List of image paths
             chunking_config: Chunking configuration
+            source_file: Source document filename for chunk metadata
 
         Returns:
             Tuple of (elements, metadata)
@@ -537,7 +541,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
         from backend.chunking.docling_chunker import DoclingChunker
 
         chunker = DoclingChunker(config=chunking_config)
-        chunk_result = chunker.chunk_document(doc, image_paths)
+        chunk_result = chunker.chunk_document(doc, image_paths, source_file)
 
         if not chunk_result.chunks:
             raise ValueError("DoclingChunker returned no chunks - document may be empty or invalid")

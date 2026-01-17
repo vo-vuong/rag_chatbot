@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import List, Optional
 
 from backend.llms.llm_strategy import LLMStrategy
+from backend.models import ChunkElement, ImageElement
 from backend.prompts.prompt_builder import PromptBuilder
 from api.services.rag_service import RAGService
 from api.services.session_service import SessionService
@@ -23,10 +24,8 @@ class ChatResponse:
     response: str
     route: Optional[str]  # "text_only", "image_only", or None (llm_only)
     route_reasoning: Optional[str]
-    retrieved_chunks: List[tuple]  # [(text, score, source_file), ...]
-    image_paths: List[str]
-    image_captions: List[str]
-    image_source_files: List[str]  # Source documents for images
+    retrieved_chunks: List[ChunkElement]  # Typed list of chunks
+    images: List[ImageElement]  # Single list of image objects (not 3 parallel lists)
 
 
 class ChatService:
@@ -74,9 +73,7 @@ class ChatService:
                 route=None,
                 route_reasoning=None,
                 retrieved_chunks=[],
-                image_paths=[],
-                image_captions=[],
-                image_source_files=[],
+                images=[],
             )
         else:
             result = self._generate_rag(query, session_id, top_k, score_threshold)
@@ -128,15 +125,13 @@ class ChatService:
                 route="text_only",
                 route_reasoning=reasoning,
                 retrieved_chunks=[],
-                image_paths=[],
-                image_captions=[],
-                image_source_files=[],
+                images=[],
             )
 
-        # Build context
+        # Build context from typed chunks
         context = PromptBuilder.format_context(
-            [c[0] for c in chunks],
-            [c[1] for c in chunks],
+            [c.content for c in chunks],
+            [c.score for c in chunks],
             include_scores=False,
         )
 
@@ -158,9 +153,7 @@ class ChatService:
             route="text_only",
             route_reasoning=reasoning,
             retrieved_chunks=chunks,
-            image_paths=[],
-            image_captions=[],
-            image_source_files=[],
+            images=[],
         )
 
     def _generate_image_response(
@@ -178,16 +171,14 @@ class ChatService:
                 route="image_only",
                 route_reasoning=reasoning,
                 retrieved_chunks=[],
-                image_paths=[],
-                image_captions=[],
-                image_source_files=[],
+                images=[],
             )
 
         img = images[0]
         context = PromptBuilder.format_image_context(
-            image_caption=img.caption,
+            image_caption=img.content,  # Was img.caption
             page_number=img.page_number,
-            source_document=img.source_document,
+            source_document=img.source_file,  # Was img.source_document
             score=img.score,
         )
 
@@ -206,9 +197,7 @@ class ChatService:
             route="image_only",
             route_reasoning=reasoning,
             retrieved_chunks=[],
-            image_paths=[img.image_path] if img.image_path else [],
-            image_captions=[img.caption],
-            image_source_files=[img.source_document] if img.source_document else [],
+            images=images,  # Pass typed list directly
         )
 
     def _generate_llm_only(self, query: str, session_id: str) -> str:

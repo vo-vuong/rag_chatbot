@@ -9,7 +9,7 @@ import httpx
 import streamlit as st
 
 from backend.session_manager import SessionManager
-from ui.api_client import get_api_client
+from ui.api_client import get_api_client, UIChunk, UIImage
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -185,17 +185,15 @@ class ChatMainUI:
                 with st.spinner("Thinking..."):
                     response = self._generate_response(prompt)
 
-                    # Get image data from session state
-                    image_paths = st.session_state.get("last_response_images", [])
-                    image_captions = st.session_state.get("last_response_image_captions", [])
-                    image_source_files = st.session_state.get("last_response_image_source_files", [])
+                    # Get image data from session state (now typed UIImage list)
+                    images: List[UIImage] = st.session_state.get("last_response_images", [])
                     chat_mode = self.session_manager.get("chat_mode", "rag")  # Default to rag
 
                     # Get route info from session state
                     route = st.session_state.get("last_response_route")
 
                     logger.info(
-                        f"After response: image_paths={image_paths}, "
+                        f"After response: images={len(images)}, "
                         f"chat_mode={chat_mode}, route={route}"
                     )
 
@@ -210,25 +208,23 @@ class ChatMainUI:
                     st.markdown(response)
 
                     # Display images if available
-                    if image_paths and chat_mode == "rag":
+                    if images and chat_mode == "rag":
                         logger.info("Calling _display_response_images")
-                        self._display_response_images(image_paths, image_captions, image_source_files)
+                        self._display_response_images(images)
                     else:
                         logger.info(
-                            f"Skipping image display: paths={bool(image_paths)}, "
+                            f"Skipping image display: images={bool(images)}, "
                             f"mode={chat_mode}"
                         )
 
                     # Save message with images and route to chat history
+                    image_paths = [img.image_path for img in images]
+                    image_captions = [img.caption for img in images]
                     self._add_message("assistant", response, image_paths, image_captions, route)
 
                     # Clear stored images after display
                     if "last_response_images" in st.session_state:
                         del st.session_state.last_response_images
-                    if "last_response_image_captions" in st.session_state:
-                        del st.session_state.last_response_image_captions
-                    if "last_response_image_source_files" in st.session_state:
-                        del st.session_state.last_response_image_source_files
                     # Clear route after display
                     if "last_response_route" in st.session_state:
                         del st.session_state.last_response_route
@@ -270,15 +266,11 @@ class ChatMainUI:
             if result.retrieved_chunks:
                 self._display_sidebar_text_results(result.retrieved_chunks)
 
-            # Store images for display
-            if result.image_paths:
-                st.session_state.last_response_images = result.image_paths
-                st.session_state.last_response_image_captions = result.image_captions
-                st.session_state.last_response_image_source_files = result.image_source_files
+            # Store images for display (using typed UIImage list)
+            if result.images:
+                st.session_state.last_response_images = result.images
             else:
                 st.session_state.last_response_images = []
-                st.session_state.last_response_image_captions = []
-                st.session_state.last_response_image_source_files = []
 
             # Store route info for display
             st.session_state.last_response_route = result.route
@@ -298,74 +290,66 @@ class ChatMainUI:
             logger.error(f"API request failed: {e}")
             return "An error occurred. Please try again."
 
-    def _display_sidebar_text_results(self, retrieved_chunks: List[tuple]) -> None:
+    def _display_sidebar_text_results(self, retrieved_chunks: List[UIChunk]) -> None:
         """Display retrieved text chunks in sidebar."""
         with st.sidebar.expander("📄 Retrieved Documents", expanded=False):
-            for i, (chunk, score, source_file) in enumerate(retrieved_chunks, 1):
-                st.markdown(f"**Doc {i}** (Score: {score:.3f})")
-                st.caption(f"📁 Source: `{source_file}`")
-                st.text(chunk[:200] + "..." if len(chunk) > 200 else chunk)
+            for i, chunk in enumerate(retrieved_chunks, 1):
+                st.markdown(f"**Doc {i}** (Score: {chunk.score:.3f})")
+                st.caption(f"📁 Source: `{chunk.source_file}`")
+                if chunk.page_number:
+                    st.caption(f"📄 Page: {chunk.page_number}")
+                st.text(chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text)
                 st.markdown("---")
 
-    def _display_response_images(
-        self,
-        image_paths: List[str],
-        captions: List[str],
-        source_files: List[str] = None
-    ) -> None:
+    def _display_response_images(self, images: List[UIImage]) -> None:
         """
         Display images with captions below response.
 
         Args:
-            image_paths: List of image file paths
-            captions: List of image captions (GPT-4o Mini generated)
-            source_files: List of source document names
+            images: List of UIImage objects with caption, image_path, source_file
         """
         import html
 
-        logger.info(f"Displaying {len(image_paths)} image(s): {image_paths}")
-
-        # Ensure source_files list matches image_paths length
-        if not source_files:
-            source_files = ["Unknown"] * len(image_paths)
+        logger.info(f"Displaying {len(images)} image(s)")
 
         st.markdown("### 📸 Relevant Image")
 
-        for i, (img_path, caption, source_file) in enumerate(
-            zip(image_paths, captions, source_files)
-        ):
+        for i, img in enumerate(images):
             try:
-                logger.info(f"Validating image {i+1}: {img_path}")
-                if self._validate_image_file(img_path):
+                logger.info(f"Validating image {i+1}: {img.image_path}")
+                if self._validate_image_file(img.image_path):
                     # Security: Sanitize caption to prevent XSS
-                    safe_caption = html.escape(caption)
+                    safe_caption = html.escape(img.caption)
 
                     # Display source document info
-                    st.caption(f"📁 Source: `{source_file}`")
+                    st.caption(f"📁 Source: `{img.source_file}`")
+                    if img.page_number:
+                        st.caption(f"📄 Page: {img.page_number}")
 
                     # Display image with caption
                     st.image(
-                        img_path,
+                        img.image_path,
                         caption=f"📌 {safe_caption}",
                         width=600,
                         output_format="auto"
                     )
-                    logger.info(f"Image displayed successfully: {img_path}")
+                    logger.info(f"Image displayed successfully: {img.image_path}")
 
                     # Show image metadata in expander
                     with st.expander("ℹ️ Image Details", expanded=False):
-                        st.text(f"Source: {source_file}")
-                        st.text(f"Path: {img_path}")
+                        st.text(f"Source: {img.source_file}")
+                        st.text(f"Path: {img.image_path}")
                         st.text(f"Caption: {safe_caption}")
+                        st.text(f"Score: {img.score:.3f}")
 
                 else:
                     from pathlib import Path
-                    st.error(f"🖼️ Image not found or invalid: {Path(img_path).name}")
-                    logger.warning(f"Image validation failed: {img_path}")
+                    st.error(f"🖼️ Image not found or invalid: {Path(img.image_path).name}")
+                    logger.warning(f"Image validation failed: {img.image_path}")
 
             except Exception as e:
                 st.error(f"🖼️ Error displaying image: {str(e)}")
-                logger.error(f"Failed to display image {img_path}: {e}")
+                logger.error(f"Failed to display image {img.image_path}: {e}")
 
     def _validate_image_file(self, image_path: str) -> bool:
         """Validate if image file is accessible and valid."""

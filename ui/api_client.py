@@ -15,16 +15,36 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class UIChunk:
+    """Retrieved text chunk for UI display."""
+
+    text: str
+    score: float
+    source_file: str
+    page_number: Optional[int] = None
+    element_type: str = "text"
+
+
+@dataclass
+class UIImage:
+    """Retrieved image for UI display."""
+
+    caption: str
+    image_path: str
+    score: float
+    source_file: str
+    page_number: Optional[int] = None
+
+
+@dataclass
 class APIResponse:
     """Response from chat API."""
 
     response: str
     route: Optional[str]
     route_reasoning: Optional[str]
-    retrieved_chunks: List[tuple]  # [(text, score, source_file), ...]
-    image_paths: List[str]
-    image_captions: List[str]
-    image_source_files: List[str]  # Source documents for images
+    retrieved_chunks: List[UIChunk]  # Typed list (was tuples)
+    images: List[UIImage]  # Single list (was 3 parallel lists)
 
 
 @dataclass
@@ -88,13 +108,24 @@ class StreamlitAPIClient:
             route=data.get("route"),
             route_reasoning=data.get("route_reasoning"),
             retrieved_chunks=[
-                (c["text"], c["score"], c.get("source_file", "Unknown"))
+                UIChunk(
+                    text=c["text"],
+                    score=c["score"],
+                    source_file=c.get("source_file", "Unknown"),
+                    page_number=c.get("page_number"),
+                    element_type=c.get("element_type", "text"),
+                )
                 for c in data.get("retrieved_chunks", [])
             ],
-            image_paths=[img["image_path"] for img in data.get("images", [])],
-            image_captions=[img["caption"] for img in data.get("images", [])],
-            image_source_files=[
-                img.get("source_file", "Unknown") for img in data.get("images", [])
+            images=[
+                UIImage(
+                    caption=img["caption"],
+                    image_path=img["image_path"],
+                    score=img["score"],
+                    source_file=img.get("source_file", "Unknown"),
+                    page_number=img.get("page_number"),
+                )
+                for img in data.get("images", [])
             ],
         )
 

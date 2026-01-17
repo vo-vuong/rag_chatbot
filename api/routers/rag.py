@@ -1,5 +1,6 @@
 """RAG search endpoints."""
 
+import logging
 from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,6 +10,7 @@ from api.dependencies import get_rag_service
 from api.models.requests import RAGSearchRequest
 from api.services.rag_service import RAGService
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/rag", tags=["rag"])
 
 
@@ -38,7 +40,7 @@ async def rag_search(
             return RAGSearchResponse(
                 route="text_only",
                 reasoning=reasoning,
-                results=[{"text": t, "score": s} for t, s in results],
+                results=[chunk.to_api_dict() for chunk in results],
             )
         else:
             results = rag_service.search_images(
@@ -49,15 +51,7 @@ async def rag_search(
             return RAGSearchResponse(
                 route="image_only",
                 reasoning=reasoning,
-                results=[
-                    {
-                        "caption": r.caption,
-                        "image_path": r.image_path,
-                        "score": r.score,
-                        "page_number": r.page_number,
-                    }
-                    for r in results
-                ],
+                results=[img.to_api_dict() for img in results],
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

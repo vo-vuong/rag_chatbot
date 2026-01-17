@@ -16,14 +16,52 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DoclingChunkElement:
-    """Chunk element compatible with existing pipeline."""
+    """Chunk element compatible with existing pipeline.
+
+    Provides unified naming aliases for consistency with ChunkElement:
+    - content: alias for text
+    - source_file: from metadata
+    - element_type: from metadata (default 'text')
+    """
 
     text: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
+    def content(self) -> str:
+        """Unified content field (alias for text)."""
+        return self.text
+
+    @property
+    def source_file(self) -> Optional[str]:
+        """Source document filename."""
+        return self.metadata.get("source_file")
+
+    @property
+    def element_type(self) -> str:
+        """Element type: text, table, list, etc."""
+        return self.metadata.get("element_type", "text")
+
+    @property
     def page_number(self) -> Optional[int]:
+        """Page number from metadata."""
         return self.metadata.get("page_number")
+
+    def to_chunk_element(self) -> "ChunkElement":
+        """Convert to unified ChunkElement model.
+
+        Returns:
+            ChunkElement with unified field naming
+        """
+        from backend.models import ChunkElement
+
+        return ChunkElement(
+            content=self.text,
+            source_file=self.source_file or "Unknown",
+            page_number=self.page_number,
+            element_type=self.element_type,
+            metadata=self.metadata,
+        )
 
 
 class DoclingChunker:
@@ -117,6 +155,7 @@ class DoclingChunker:
         self,
         doc: Any,
         image_paths: Optional[List[str]] = None,
+        source_file: str = "Unknown",
     ) -> ChunkResult:
         """
         Chunk Docling document using HybridChunker.
@@ -124,6 +163,7 @@ class DoclingChunker:
         Args:
             doc: Docling DoclingDocument
             image_paths: Associated image paths
+            source_file: Source document filename for metadata
 
         Returns:
             ChunkResult with chunked elements
@@ -147,8 +187,8 @@ class DoclingChunker:
             if not chunks:
                 return EmptyChunkResult("No chunks generated", chunker_type="docling")
 
-            # Convert to compatible format
-            converted_chunks = self._convert_chunks(chunks, doc)
+            # Convert to compatible format with source_file
+            converted_chunks = self._convert_chunks(chunks, doc, source_file)
 
             # Apply post-processing overlap
             overlap_tokens = self.config.get("overlap_tokens", 0)
@@ -193,13 +233,16 @@ class DoclingChunker:
             logger.error(f"Docling chunking failed: {e}")
             return EmptyChunkResult(str(e), chunker_type="docling")
 
-    def _convert_chunks(self, chunks: List, doc: Any) -> List[DoclingChunkElement]:
+    def _convert_chunks(
+        self, chunks: List, doc: Any, source_file: str = "Unknown"
+    ) -> List[DoclingChunkElement]:
         """
         Convert Docling chunks to compatible element format.
 
         Args:
             chunks: Raw Docling chunks
             doc: Original document for contextualization
+            source_file: Source document filename
 
         Returns:
             List of converted chunk elements
@@ -226,6 +269,7 @@ class DoclingChunker:
                 "chunk_index": i,
                 "headings": headings,
                 "source": "docling",
+                "source_file": source_file,
             }
 
             # Extract page number and bbox from doc_items provenance

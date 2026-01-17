@@ -1,19 +1,19 @@
 # RAG Chatbot
 
-A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and Streamlit frontend enabling intelligent document Q&A through advanced processing, OCR capabilities, and multimodal AI-powered retrieval.
+A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and Streamlit frontend enabling intelligent document Q&A through Docling-powered processing (PDF/DOCX), multimodal AI retrieval, and token-aware chunking.
 
-## ✨ Key Features
+## Key Features
 
-- 🤖 **OpenAI Integration**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
-- 🖼️ **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
-- 📄 **Hybrid Chunking**: 5-stage pipeline combining layout-aware + semantic chunking (Phase 04 complete)
-- 🧠 **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with 125+ languages
-- 💾 **Vector Database**: Qdrant integration with dual collections (text + images)
-- 🔄 **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes
-- 🗂️ **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
-- 🌐 **REST API**: FastAPI backend with SSE streaming, health checks, CORS support
+- **OpenAI Integration**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
+- **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
+- **Token-Aware Chunking**: Docling HybridChunker with 512-token chunks, 50-token overlap, tiktoken alignment
+- **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with 125+ languages (EasyOCR)
+- **Vector Database**: Qdrant integration with dual collections (text + images)
+- **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes, query routing
+- **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
+- **REST API**: FastAPI backend with 4 endpoints, SSE streaming, health checks, CORS support
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -60,7 +60,7 @@ streamlit run app.py
 4. **Chat**: Query your documents; results include relevant text and images with source attribution
 5. **Manage**: Inspect collections and pagination via Data Management
 
-## 📋 Document Processing
+## Document Processing
 
 ### Supported Formats
 
@@ -80,7 +80,7 @@ streamlit run app.py
 - **AI Captioning**: GPT-4o Mini Vision generates descriptive captions for extracted images
 - **Caption Caching**: MD5-based caching for >80% cost savings on duplicate images
 
-## ⚙️ Configuration
+## Configuration
 
 ### Environment Variables (.env)
 
@@ -90,7 +90,7 @@ QDRANT_HOST=localhost
 QDRANT_PORT=6333
 ```
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌───────────────────┐     HTTP      ┌───────────────────┐
@@ -126,17 +126,25 @@ QDRANT_PORT=6333
 | `/api/v1/rag/search` | POST | Vector search without LLM |
 | `/api/v1/health` | GET | Health check with Qdrant status |
 
-## 🔧 Development
+## Development
 
 The project uses a modular architecture with Strategy, Factory, Singleton, and Dependency Injection patterns.
 
-- `api/`: FastAPI backend (routers, services, models)
-- `backend/`: Core logic (document processing, vision, embeddings, LLMs)
-- `ui/`: Streamlit components and API client
-- `config/`: Application constants and defaults
-- `tests/`: Pytest suite (API, services, UI client)
+### Project Structure
+- `api/`: FastAPI REST API layer (routers, services, models)
+- `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
+- `ui/`: Streamlit web interface and API client
+- `config/`: Application constants, logging, and prompts
+- `tests/`: Pytest suite with custom markers (@pytest.mark.integration, @pytest.mark.slow)
 
-## 📚 Documentation
+### Design Patterns
+- **Strategy Pattern**: Document processors, embeddings, LLMs
+- **Singleton Pattern**: SessionManager, PromptManager
+- **Factory Pattern**: EmbeddingFactory, LLMFactory
+- **Dependency Injection**: FastAPI dependencies
+- **Lazy Initialization**: Docling converter, Image captioner
+
+## Documentation
 
 Comprehensive documentation available in `docs/`:
 
@@ -146,7 +154,7 @@ Comprehensive documentation available in `docs/`:
 - **[System Architecture](docs/system-architecture.md)**: Layer diagrams, integration points
 - **[Project Roadmap](docs/project-roadmap.md)**: Version history, planned features
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 **Core**: Python 3.11+, FastAPI 0.128+, Streamlit 1.29+, Qdrant 1.15.0
 **AI/ML**: OpenAI (GPT-4o/embeddings/Vision), LangChain 0.1+

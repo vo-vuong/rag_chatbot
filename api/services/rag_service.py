@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from backend.embeddings.embedding_strategy import EmbeddingStrategy
+from backend.models import ChunkElement, ImageElement
 from backend.routing import QueryRouter
 from backend.vector_db.qdrant_manager import QdrantManager
 
@@ -19,20 +20,9 @@ logger = logging.getLogger(__name__)
 class SearchResult:
     """Text search result container."""
 
-    chunks: List[Tuple[str, float]]  # (text, score)
+    chunks: List[ChunkElement]  # Typed ChunkElement objects
     route: str  # "text_only" or "image_only"
     reasoning: str
-
-
-@dataclass
-class ImageSearchResult:
-    """Image search result container."""
-
-    caption: str
-    image_path: str
-    score: float
-    page_number: Optional[int]
-    source_document: str
 
 
 class RAGService:
@@ -69,12 +59,12 @@ class RAGService:
         query: str,
         top_k: int = 3,
         score_threshold: float = 0.5,
-    ) -> List[Tuple[str, float, str]]:
+    ) -> List[ChunkElement]:
         """
         Search text collection.
 
         Returns:
-            List of (chunk_text, score, source_file) tuples
+            List of ChunkElement objects with content, score, source_file, metadata
         """
         query_embedding = self._embedding.embed_query(query)
         results = self._text_manager.search(
@@ -83,11 +73,7 @@ class RAGService:
             score_threshold=score_threshold,
         )
         return [
-            (
-                r["payload"].get("chunk", ""),
-                r["score"],
-                r["payload"].get("source_file", "Unknown"),
-            )
+            ChunkElement.from_qdrant_payload(r["payload"], r["score"])
             for r in results
         ]
 
@@ -96,12 +82,12 @@ class RAGService:
         query: str,
         top_k: int = 1,
         score_threshold: float = 0.6,
-    ) -> List[ImageSearchResult]:
+    ) -> List[ImageElement]:
         """
         Search image collection.
 
         Returns:
-            List of ImageSearchResult objects
+            List of ImageElement objects
         """
         if not self._image_manager:
             return []
@@ -113,13 +99,7 @@ class RAGService:
             score_threshold=score_threshold,
         )
         return [
-            ImageSearchResult(
-                caption=r["payload"].get("chunk", ""),
-                image_path=r["payload"].get("image_path", ""),
-                score=r["score"],
-                page_number=r["payload"].get("page_number"),
-                source_document=r["payload"].get("source_file", "Unknown"),
-            )
+            ImageElement.from_qdrant_payload(r["payload"], r["score"])
             for r in results
         ]
 
@@ -143,5 +123,15 @@ class RAGService:
             return SearchResult(chunks=chunks, route=route, reasoning=reasoning)
         else:
             images = self.search_images(query, top_k=1, score_threshold=image_score_threshold)
-            chunks = [(img.caption, img.score) for img in images]
+            # Convert ImageElement to ChunkElement for unified interface
+            chunks = [
+                ChunkElement(
+                    content=img.content,
+                    score=img.score,
+                    source_file=img.source_file,
+                    page_number=img.page_number,
+                    element_type="image",
+                )
+                for img in images
+            ]
             return SearchResult(chunks=chunks, route=route, reasoning=reasoning)

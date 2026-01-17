@@ -20,6 +20,7 @@ from PIL import Image
 from .interfaces import DocumentProcessingStrategy
 from .results import ProcessingResult, ProcessingMetrics, ProcessingStatus
 
+# Logger configured by api/main.py at startup
 logger = logging.getLogger(__name__)
 
 
@@ -202,6 +203,29 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             # Convert document (Docling auto-detects format)
             result = self.converter.convert(source=str(file_path))
             doc = result.document
+
+            # Log conversion details
+            logger.info(
+                f"Docling conversion completed: "
+                f"status={result.status}, "
+                f"pages={len(result.pages) if hasattr(result, 'pages') and result.pages else 0}, "
+                f"source={file_path.name}, "
+                f"tables={len(doc.tables) if hasattr(doc, 'tables') else 0}, "
+                f"pictures={len(doc.pictures) if hasattr(doc, 'pictures') else 0}, "
+                f"texts={len(list(doc.texts)) if hasattr(doc, 'texts') else 0}"
+            )
+
+            # Log document headings from texts collection
+            # from docling_core.types.doc import DocItemLabel
+            # headers = [
+            #     (item.text, getattr(item, 'level', 0))
+            #     for item in doc.texts
+            #     if hasattr(item, 'label') and item.label == DocItemLabel.SECTION_HEADER
+            # ]
+            # if headers:
+            #     logger.info(f"Document headings: {headers}")
+            # else:
+            #     logger.info("Document headings: None found")
 
             # OCR tracking - only applies to PDF
             pdf_mode = self.config.get("pdf", {}).get("mode", "no_ocr")
@@ -523,4 +547,3 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             f"(tokenizer: {chunking_config.get('tokenizer_model', 'default')})"
         )
         return chunk_result.chunks, chunk_result.metadata
-

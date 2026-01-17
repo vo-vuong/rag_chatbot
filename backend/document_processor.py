@@ -647,17 +647,3 @@ def process_document(
     """
     processor = get_document_processor(config=config)
     return processor.process_document(file_path, **kwargs)
-
-
-def is_file_supported(file_path: Union[str, Path]) -> bool:
-    """
-    Check if a file type is supported for processing.
-
-    Args:
-        file_path: Path to the file
-
-    Returns:
-        True if the file type is supported
-    """
-    processor = get_document_processor()
-    return processor.can_process_file(file_path)

@@ -89,7 +89,7 @@ class UploadResponse(BaseModel):
 
 
 class PreviewChunk(BaseModel):
-    """Chunk data for preview display (limited fields for UI)."""
+    """Chunk data for preview display with metadata."""
 
     text: str
     source_file: str
@@ -97,20 +97,40 @@ class PreviewChunk(BaseModel):
     element_type: str = "text"
     chunk_index: int
     file_type: str
+    # Extended metadata fields for preview
+    headings: List[str] = []
+    source: str = "docling"
+    bbox: Optional[Dict[str, float]] = None
+    chunk_type: str = "hybrid"
+    token_count: Optional[int] = None
+    processing_strategy: Optional[str] = None
+    ocr_used: bool = False
 
 
 class PreviewImage(BaseModel):
-    """Image data for preview display."""
+    """Image data for preview display with metadata."""
 
     caption: str
     image_path: str
     page_number: Optional[int] = None
     source_file: str
     image_hash: str
+    # Extended metadata fields for preview
+    image_metadata: Dict[str, Any] = {}
+    bbox: Optional[Dict[str, float]] = None
+    docling_caption: Optional[str] = None
+    surrounding_context: Optional[str] = None
+    caption_cost: float = 0.0
+    file_type: str = ""
+    language: str = "en"
+    processing_strategy: str = "docling"
 
 
 class FullChunkData(BaseModel):
-    """Complete chunk data for save operation."""
+    """Complete chunk data for save operation.
+
+    Includes all metadata fields from DoclingChunker for full traceability.
+    """
 
     text: str
     source_file: str
@@ -119,17 +139,36 @@ class FullChunkData(BaseModel):
     chunk_index: int
     file_type: str
     language: str = "en"
+    # Extended metadata fields (flattened from DoclingChunker)
+    headings: List[str] = []
+    source: str = "docling"  # Processing source identifier
+    bbox: Optional[Dict[str, float]] = None  # Bounding box: left, top, right, bottom
+    chunk_type: str = "hybrid"  # Chunker type used
+    token_count: Optional[int] = None
+    processing_strategy: Optional[str] = None  # e.g., "docling", "fallback_pypdf2"
+    ocr_used: bool = False
 
 
 class FullImageData(BaseModel):
-    """Complete image data for save operation."""
+    """Complete image data for save operation.
+
+    Includes all metadata fields from image extraction for full traceability.
+    """
 
     caption: str
     image_path: str
     page_number: Optional[int] = None
     source_file: str
     image_hash: str
-    image_metadata: Dict[str, Any]
+    image_metadata: Dict[str, Any]  # width, height, format, optimized_size_bytes
+    # Extended metadata fields
+    bbox: Optional[Dict[str, float]] = None  # Bounding box: left, top, right, bottom
+    docling_caption: Optional[str] = None  # Caption from Docling extraction
+    surrounding_context: Optional[str] = None  # Text context around the image
+    caption_cost: float = 0.0  # Vision API cost for captioning
+    file_type: str = ""  # Source file type (pdf, docx)
+    language: str = "en"  # Document language
+    processing_strategy: str = "docling"  # Processing source
 
 
 class UploadPreviewResponse(BaseModel):

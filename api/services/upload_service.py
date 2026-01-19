@@ -90,12 +90,26 @@ class UploadService:
 
             # Process text chunks
             if result.elements:
+                # Extract processing metrics for metadata
+                processing_strategy = (
+                    result.metrics.strategy_used
+                    if result.metrics and result.metrics.strategy_used
+                    else "docling"
+                )
+                ocr_used = (
+                    result.metrics.ocr_used
+                    if result.metrics
+                    else False
+                )
+
                 chunks_count = self._upload_text_chunks(
                     qdrant=qdrant,
                     elements=result.elements,
                     source_file=file.filename,
                     file_type=file_type,
                     language=language,
+                    processing_strategy=processing_strategy,
+                    ocr_used=ocr_used,
                 )
 
             # Process images - use settings.image_collection
@@ -103,6 +117,9 @@ class UploadService:
                 images_count = self._upload_images(
                     image_data=result.image_data,
                     source_file=file.filename,
+                    file_type=file_type,
+                    language=language,
+                    processing_strategy=processing_strategy,
                 )
 
             processing_time = time.time() - start_time
@@ -135,20 +152,34 @@ class UploadService:
         source_file: str,
         file_type: str,
         language: str,
+        processing_strategy: str = "docling",
+        ocr_used: bool = False,
     ) -> int:
-        """Upload text chunks to Qdrant collection."""
-        # Build DataFrame with chunk data
+        """Upload text chunks to Qdrant collection.
+
+        Extracts and flattens all metadata from chunk elements for full traceability.
+        """
+        # Build DataFrame with chunk data including all metadata
         chunks_data = []
         for idx, elem in enumerate(elements):
             text = elem.text if hasattr(elem, "text") else str(elem)
-            page_num = (
-                elem.metadata.get("page_number") if hasattr(elem, "metadata") else None
-            )
-            elem_type = (
-                elem.metadata.get("element_type", "text")
-                if hasattr(elem, "metadata")
-                else "text"
-            )
+
+            # Extract metadata dict from element
+            metadata = {}
+            if hasattr(elem, "metadata"):
+                if isinstance(elem.metadata, dict):
+                    metadata = elem.metadata
+                elif hasattr(elem.metadata, "get"):
+                    metadata = dict(elem.metadata)
+
+            # Extract individual fields from metadata
+            page_num = metadata.get("page_number")
+            elem_type = metadata.get("element_type", "text")
+            headings = metadata.get("headings", [])
+            source = metadata.get("source", "docling")
+            bbox = metadata.get("bbox")
+            chunk_type = metadata.get("chunk_type", "hybrid")
+            token_count = metadata.get("token_count")
 
             chunks_data.append(
                 {
@@ -158,6 +189,14 @@ class UploadService:
                     "chunk_index": idx,
                     "file_type": file_type,
                     "language": language,
+                    # Extended metadata fields (flattened)
+                    "headings": headings,
+                    "source": source,
+                    "bbox": bbox,
+                    "chunk_type": chunk_type,
+                    "token_count": token_count,
+                    "processing_strategy": processing_strategy,
+                    "ocr_used": ocr_used,
                 }
             )
 
@@ -189,8 +228,14 @@ class UploadService:
         self,
         image_data: list,
         source_file: str,
+        file_type: str = "",
+        language: str = "en",
+        processing_strategy: str = "docling",
     ) -> int:
-        """Upload image captions to settings.image_collection."""
+        """Upload image captions to settings.image_collection.
+
+        Includes all metadata fields from image extraction for full traceability.
+        """
         try:
             image_qdrant = QdrantManager(
                 collection_name=self.settings.image_collection,
@@ -198,7 +243,7 @@ class UploadService:
                 port=self.settings.qdrant_port,
             )
 
-            # Build image DataFrame
+            # Build image DataFrame with all metadata
             images_df = pd.DataFrame(
                 [
                     {
@@ -207,9 +252,21 @@ class UploadService:
                         "image_hash": img["image_hash"],
                         "page_number": img["page_number"],
                         "source_file": img.get("source_file", source_file),
+                        # Image dimensions from image_metadata
                         "width": img["image_metadata"]["width"],
                         "height": img["image_metadata"]["height"],
                         "format": img["image_metadata"]["format"],
+                        "optimized_size_bytes": img["image_metadata"].get(
+                            "optimized_size_bytes"
+                        ),
+                        # Extended metadata fields
+                        "bbox": img.get("bbox"),
+                        "docling_caption": img.get("docling_caption"),
+                        "surrounding_context": img.get("surrounding_context"),
+                        "caption_cost": img.get("cost", 0.0),
+                        "file_type": file_type,
+                        "language": language,
+                        "processing_strategy": processing_strategy,
                     }
                     for img in image_data
                 ]
@@ -314,18 +371,39 @@ class UploadService:
             if not result.success:
                 raise ValueError(f"Processing failed: {result.error_message}")
 
-            # Build full chunks data (all chunks)
+            # Extract processing metrics for metadata
+            processing_strategy = (
+                result.metrics.strategy_used
+                if result.metrics and result.metrics.strategy_used
+                else "docling"
+            )
+            ocr_used = (
+                result.metrics.ocr_used
+                if result.metrics
+                else False
+            )
+
+            # Build full chunks data (all chunks) with all metadata
             full_chunks_data = []
             for idx, elem in enumerate(result.elements):
                 text = elem.text if hasattr(elem, "text") else str(elem)
-                page_num = (
-                    elem.metadata.get("page_number") if hasattr(elem, "metadata") else None
-                )
-                elem_type = (
-                    elem.metadata.get("element_type", "text")
-                    if hasattr(elem, "metadata")
-                    else "text"
-                )
+
+                # Extract metadata dict from element
+                metadata = {}
+                if hasattr(elem, "metadata"):
+                    if isinstance(elem.metadata, dict):
+                        metadata = elem.metadata
+                    elif hasattr(elem.metadata, "get"):
+                        metadata = dict(elem.metadata)
+
+                # Extract individual fields from metadata
+                page_num = metadata.get("page_number")
+                elem_type = metadata.get("element_type", "text")
+                headings = metadata.get("headings", [])
+                source = metadata.get("source", "docling")
+                bbox = metadata.get("bbox")
+                chunk_type = metadata.get("chunk_type", "hybrid")
+                token_count = metadata.get("token_count")
 
                 full_chunks_data.append(
                     FullChunkData(
@@ -336,10 +414,18 @@ class UploadService:
                         chunk_index=idx,
                         file_type=file_type,
                         language=language,
+                        # Extended metadata fields
+                        headings=headings,
+                        source=source,
+                        bbox=bbox,
+                        chunk_type=chunk_type,
+                        token_count=token_count,
+                        processing_strategy=processing_strategy,
+                        ocr_used=ocr_used,
                     )
                 )
 
-            # Build preview chunks (max PREVIEW_CHUNK_LIMIT)
+            # Build preview chunks (max PREVIEW_CHUNK_LIMIT) with metadata
             preview_chunks = [
                 PreviewChunk(
                     text=chunk.text,
@@ -348,11 +434,19 @@ class UploadService:
                     element_type=chunk.element_type,
                     chunk_index=chunk.chunk_index,
                     file_type=chunk.file_type,
+                    # Extended metadata for preview display
+                    headings=chunk.headings,
+                    source=chunk.source,
+                    bbox=chunk.bbox,
+                    chunk_type=chunk.chunk_type,
+                    token_count=chunk.token_count,
+                    processing_strategy=chunk.processing_strategy,
+                    ocr_used=chunk.ocr_used,
                 )
                 for chunk in full_chunks_data[:PREVIEW_CHUNK_LIMIT]
             ]
 
-            # Build full images data
+            # Build full images data with all metadata
             full_images_data = []
             preview_images = []
 
@@ -365,6 +459,14 @@ class UploadService:
                         source_file=img.get("source_file", file.filename),
                         image_hash=img["image_hash"],
                         image_metadata=img["image_metadata"],
+                        # Extended metadata fields
+                        bbox=img.get("bbox"),
+                        docling_caption=img.get("docling_caption"),
+                        surrounding_context=img.get("surrounding_context"),
+                        caption_cost=img.get("cost", 0.0),
+                        file_type=file_type,
+                        language=language,
+                        processing_strategy=processing_strategy,
                     )
                     full_images_data.append(full_img)
 
@@ -375,6 +477,15 @@ class UploadService:
                             page_number=img.get("page_number"),
                             source_file=img.get("source_file", file.filename),
                             image_hash=img["image_hash"],
+                            # Extended metadata for preview display
+                            image_metadata=img.get("image_metadata", {}),
+                            bbox=img.get("bbox"),
+                            docling_caption=img.get("docling_caption"),
+                            surrounding_context=img.get("surrounding_context"),
+                            caption_cost=img.get("cost", 0.0),
+                            file_type=file_type,
+                            language=language,
+                            processing_strategy=processing_strategy,
                         )
                     )
 
@@ -475,7 +586,7 @@ class UploadService:
         Returns:
             Number of chunks saved
         """
-        # Build DataFrame with chunk data
+        # Build DataFrame with chunk data including all metadata
         chunks_data = []
         for chunk in chunks:
             chunks_data.append(
@@ -486,6 +597,14 @@ class UploadService:
                     "chunk_index": chunk.chunk_index,
                     "file_type": file_type,
                     "language": language,
+                    # Extended metadata fields (flattened)
+                    "headings": chunk.headings,
+                    "source": chunk.source,
+                    "bbox": chunk.bbox,
+                    "chunk_type": chunk.chunk_type,
+                    "token_count": chunk.token_count,
+                    "processing_strategy": chunk.processing_strategy,
+                    "ocr_used": chunk.ocr_used,
                 }
             )
 
@@ -534,7 +653,7 @@ class UploadService:
                 port=self.settings.qdrant_port,
             )
 
-            # Build image DataFrame
+            # Build image DataFrame with all metadata
             images_df = pd.DataFrame(
                 [
                     {
@@ -543,9 +662,21 @@ class UploadService:
                         "image_hash": img.image_hash,
                         "page_number": img.page_number,
                         "source_file": img.source_file or source_file,
+                        # Image dimensions from image_metadata
                         "width": img.image_metadata.get("width", 0),
                         "height": img.image_metadata.get("height", 0),
                         "format": img.image_metadata.get("format", "unknown"),
+                        "optimized_size_bytes": img.image_metadata.get(
+                            "optimized_size_bytes"
+                        ),
+                        # Extended metadata fields
+                        "bbox": img.bbox,
+                        "docling_caption": img.docling_caption,
+                        "surrounding_context": img.surrounding_context,
+                        "caption_cost": img.caption_cost,
+                        "file_type": img.file_type,
+                        "language": img.language,
+                        "processing_strategy": img.processing_strategy,
                     }
                     for img in images
                 ]

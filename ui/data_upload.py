@@ -754,31 +754,102 @@ class DataUploadUI:
                 f"📄 {preview_result.file_name} ({preview_result.total_chunks_count} chunks)",
                 expanded=len(preview_data) == 1,
             ):
-                if preview_result.preview_chunks:
-                    # Show first few preview chunks
-                    display_count = min(5, len(preview_result.preview_chunks))
-                    for idx, chunk in enumerate(preview_result.preview_chunks[:display_count]):
-                        st.markdown(f"**Chunk {chunk.chunk_index + 1}:**")
-                        preview_text = chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text
-                        st.text_area(
-                            f"Content",
-                            preview_text,
-                            height=100,
-                            disabled=True,
-                            label_visibility="collapsed",
-                            key=f"preview_{preview_result.file_name}_{idx}",
-                        )
-                        if chunk.page_number:
-                            st.caption(f"Page: {chunk.page_number} | Type: {chunk.element_type}")
-
-                    if len(preview_result.preview_chunks) > display_count:
-                        st.info(
-                            f"Showing {display_count} of {len(preview_result.preview_chunks)} preview chunks"
-                        )
-
-                # Show image count if any
+                # Tabs for chunks and images
                 if preview_result.preview_images:
-                    st.markdown(f"**🖼️ {len(preview_result.preview_images)} image(s) with captions**")
+                    chunk_tab, image_tab = st.tabs(["📝 Text Chunks", "🖼️ Images"])
+                else:
+                    chunk_tab = st.container()
+                    image_tab = None
+
+                with chunk_tab:
+                    if preview_result.preview_chunks:
+                        # Show first few preview chunks
+                        display_count = min(5, len(preview_result.preview_chunks))
+                        for idx, chunk in enumerate(preview_result.preview_chunks[:display_count]):
+                            st.markdown(f"**Chunk {chunk.chunk_index + 1}:**")
+                            preview_text = chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text
+                            st.text_area(
+                                f"Content",
+                                preview_text,
+                                height=100,
+                                disabled=True,
+                                label_visibility="collapsed",
+                                key=f"preview_{preview_result.file_name}_{idx}",
+                            )
+
+                            # Basic info
+                            basic_info = f"Page: {chunk.page_number or 'N/A'} | Type: {chunk.element_type}"
+                            st.caption(basic_info)
+
+                            # Metadata toggle (avoid nested expander)
+                            show_meta = st.toggle(
+                                "Show metadata",
+                                key=f"meta_toggle_{preview_result.file_name}_{idx}",
+                            )
+                            if show_meta:
+                                meta_col1, meta_col2 = st.columns(2)
+                                with meta_col1:
+                                    st.markdown(f"**Processing Strategy:** `{chunk.processing_strategy or 'N/A'}`")
+                                    st.markdown(f"**Chunk Type:** `{chunk.chunk_type}`")
+                                    st.markdown(f"**Source:** `{chunk.source}`")
+                                    st.markdown(f"**OCR Used:** `{chunk.ocr_used}`")
+                                with meta_col2:
+                                    st.markdown(f"**Token Count:** `{chunk.token_count or 'N/A'}`")
+                                    st.markdown(f"**File Type:** `{chunk.file_type}`")
+                                    if chunk.headings:
+                                        st.markdown(f"**Headings:** {', '.join(chunk.headings)}")
+                                    if chunk.bbox:
+                                        st.markdown(f"**BBox:** `{chunk.bbox}`")
+
+                            st.divider()
+
+                        if len(preview_result.preview_chunks) > display_count:
+                            st.info(
+                                f"Showing {display_count} of {len(preview_result.preview_chunks)} preview chunks"
+                            )
+
+                # Show images with metadata
+                if image_tab and preview_result.preview_images:
+                    with image_tab:
+                        st.markdown(f"**{len(preview_result.preview_images)} image(s) extracted:**")
+                        for img_idx, img in enumerate(preview_result.preview_images[:5]):
+                            st.markdown(f"**Image {img_idx + 1}:**")
+                            col1, col2 = st.columns([1, 2])
+                            with col1:
+                                # Try to display image if path exists
+                                if img.image_path:
+                                    try:
+                                        st.image(img.image_path, width=150)
+                                    except Exception:
+                                        st.caption(f"📷 {img.image_path}")
+                            with col2:
+                                st.markdown(f"**Caption:** {img.caption[:200]}..." if len(img.caption) > 200 else f"**Caption:** {img.caption}")
+                                st.caption(f"Page: {img.page_number or 'N/A'} | Hash: {img.image_hash[:8]}...")
+
+                                # Image metadata toggle (avoid nested expander)
+                                show_img_meta = st.toggle(
+                                    "Show image metadata",
+                                    key=f"img_meta_toggle_{preview_result.file_name}_{img_idx}",
+                                )
+                                if show_img_meta:
+                                    st.markdown(f"**Processing Strategy:** `{img.processing_strategy}`")
+                                    st.markdown(f"**File Type:** `{img.file_type}`")
+                                    st.markdown(f"**Language:** `{img.language}`")
+                                    st.markdown(f"**Caption Cost:** `${img.caption_cost:.4f}`")
+                                    if img.docling_caption:
+                                        st.markdown(f"**Docling Caption:** {img.docling_caption[:100]}...")
+                                    if img.surrounding_context:
+                                        st.markdown(f"**Context:** {img.surrounding_context[:100]}...")
+                                    if img.image_metadata:
+                                        st.markdown("**Image Info:**")
+                                        st.json(img.image_metadata)
+                                    if img.bbox:
+                                        st.markdown(f"**BBox:** `{img.bbox}`")
+
+                            st.divider()
+
+                        if len(preview_result.preview_images) > 5:
+                            st.info(f"Showing 5 of {len(preview_result.preview_images)} images")
 
     def _handle_save_preview_data(self) -> None:
         """Save preview data to Qdrant via the save API.

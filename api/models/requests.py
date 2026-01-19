@@ -37,7 +37,10 @@ class UploadConfig(BaseModel):
 
 
 class SaveChunkData(BaseModel):
-    """Chunk data for save request."""
+    """Chunk data for save request.
+
+    Matches FullChunkData fields for complete metadata preservation.
+    """
 
     text: str
     source_file: str
@@ -45,17 +48,36 @@ class SaveChunkData(BaseModel):
     element_type: str = "text"
     chunk_index: int
     file_type: str
+    # Extended metadata fields (flattened from DoclingChunker)
+    headings: List[str] = []
+    source: str = "docling"  # Processing source identifier
+    bbox: Optional[Dict[str, float]] = None  # Bounding box: left, top, right, bottom
+    chunk_type: str = "hybrid"  # Chunker type used
+    token_count: Optional[int] = None
+    processing_strategy: Optional[str] = None  # e.g., "docling", "fallback_pypdf2"
+    ocr_used: bool = False
 
 
 class SaveImageData(BaseModel):
-    """Image data for save request."""
+    """Image data for save request.
+
+    Matches FullImageData fields for complete metadata preservation.
+    """
 
     caption: str
     image_path: str
     page_number: Optional[int] = None
     source_file: str
     image_hash: str
-    image_metadata: Dict[str, Any]
+    image_metadata: Dict[str, Any]  # width, height, format, optimized_size_bytes
+    # Extended metadata fields
+    bbox: Optional[Dict[str, float]] = None  # Bounding box: left, top, right, bottom
+    docling_caption: Optional[str] = None  # Caption from Docling extraction
+    surrounding_context: Optional[str] = None  # Text context around the image
+    caption_cost: float = 0.0  # Vision API cost for captioning
+    file_type: str = ""  # Source file type (pdf, docx)
+    language: str = "en"  # Document language
+    processing_strategy: str = "docling"  # Processing source
 
 
 class SaveUploadRequest(BaseModel):

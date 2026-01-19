@@ -71,7 +71,7 @@ class UploadResult:
 
 @dataclass
 class PreviewChunk:
-    """Chunk data for preview display."""
+    """Chunk data for preview display with metadata."""
 
     text: str
     source_file: str
@@ -79,17 +79,34 @@ class PreviewChunk:
     element_type: str
     chunk_index: int
     file_type: str
+    # Extended metadata fields
+    headings: List[str] = field(default_factory=list)
+    source: str = "docling"
+    bbox: Optional[Dict[str, float]] = None
+    chunk_type: str = "hybrid"
+    token_count: Optional[int] = None
+    processing_strategy: Optional[str] = None
+    ocr_used: bool = False
 
 
 @dataclass
 class PreviewImage:
-    """Image data for preview display."""
+    """Image data for preview display with metadata."""
 
     caption: str
     image_path: str
     page_number: Optional[int]
     source_file: str
     image_hash: str
+    # Extended metadata fields
+    image_metadata: Dict[str, Any] = field(default_factory=dict)
+    bbox: Optional[Dict[str, float]] = None
+    docling_caption: Optional[str] = None
+    surrounding_context: Optional[str] = None
+    caption_cost: float = 0.0
+    file_type: str = ""
+    language: str = "en"
+    processing_strategy: str = "docling"
 
 
 @dataclass
@@ -378,7 +395,7 @@ class StreamlitAPIClient:
 
             if response.status_code == 200:
                 result = response.json()
-                # Parse preview chunks
+                # Parse preview chunks with metadata
                 preview_chunks = [
                     PreviewChunk(
                         text=c["text"],
@@ -387,10 +404,18 @@ class StreamlitAPIClient:
                         element_type=c.get("element_type", "text"),
                         chunk_index=c["chunk_index"],
                         file_type=c["file_type"],
+                        # Extended metadata
+                        headings=c.get("headings", []),
+                        source=c.get("source", "docling"),
+                        bbox=c.get("bbox"),
+                        chunk_type=c.get("chunk_type", "hybrid"),
+                        token_count=c.get("token_count"),
+                        processing_strategy=c.get("processing_strategy"),
+                        ocr_used=c.get("ocr_used", False),
                     )
                     for c in result.get("chunks", [])
                 ]
-                # Parse preview images
+                # Parse preview images with metadata
                 preview_images = [
                     PreviewImage(
                         caption=img["caption"],
@@ -398,6 +423,15 @@ class StreamlitAPIClient:
                         page_number=img.get("page_number"),
                         source_file=img["source_file"],
                         image_hash=img["image_hash"],
+                        # Extended metadata
+                        image_metadata=img.get("image_metadata", {}),
+                        bbox=img.get("bbox"),
+                        docling_caption=img.get("docling_caption"),
+                        surrounding_context=img.get("surrounding_context"),
+                        caption_cost=img.get("caption_cost", 0.0),
+                        file_type=img.get("file_type", ""),
+                        language=img.get("language", "en"),
+                        processing_strategy=img.get("processing_strategy", "docling"),
                     )
                     for img in result.get("images", [])
                 ]

@@ -3,8 +3,8 @@
 import json
 import logging
 import uuid
-from dataclasses import dataclass
-from typing import Iterator, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, Iterator, List, Optional
 
 import httpx
 import streamlit as st
@@ -53,6 +53,73 @@ class StreamEvent:
 
     event: str  # "route", "context", "token", "done", "error"
     data: dict
+
+
+@dataclass
+class UploadResult:
+    """Upload result from API."""
+
+    success: bool
+    file_name: str = ""
+    file_type: str = ""
+    chunks_count: int = 0
+    images_count: int = 0
+    message: str = ""
+    processing_time: float = 0.0
+    error: Optional[str] = None
+
+
+@dataclass
+class PreviewChunk:
+    """Chunk data for preview display."""
+
+    text: str
+    source_file: str
+    page_number: Optional[int]
+    element_type: str
+    chunk_index: int
+    file_type: str
+
+
+@dataclass
+class PreviewImage:
+    """Image data for preview display."""
+
+    caption: str
+    image_path: str
+    page_number: Optional[int]
+    source_file: str
+    image_hash: str
+
+
+@dataclass
+class PreviewResult:
+    """Preview result from API - contains preview and full data for save."""
+
+    success: bool
+    file_name: str = ""
+    file_type: str = ""
+    preview_chunks: List[PreviewChunk] = field(default_factory=list)
+    preview_images: List[PreviewImage] = field(default_factory=list)
+    total_chunks_count: int = 0
+    total_images_count: int = 0
+    processing_time: float = 0.0
+    full_chunks_data: List[Dict[str, Any]] = field(default_factory=list)
+    full_images_data: List[Dict[str, Any]] = field(default_factory=list)
+    language: str = "en"
+    error: Optional[str] = None
+
+
+@dataclass
+class SaveResult:
+    """Save result from API."""
+
+    success: bool
+    chunks_count: int = 0
+    images_count: int = 0
+    text_collection: str = ""
+    image_collection: str = ""
+    error: Optional[str] = None
 
 
 class StreamlitAPIClient:
@@ -183,6 +250,263 @@ class StreamlitAPIClient:
     def close(self):
         """Close HTTP client."""
         self._client.close()
+
+    def upload_file(
+        self,
+        file_content: bytes,
+        file_name: str,
+        language: str = "en",
+        processing_mode: str = "fast",
+        csv_columns: Optional[str] = None,
+        vision_failure_mode: str = "graceful",
+        timeout: float = 300.0,
+    ) -> UploadResult:
+        """
+        Upload and process a file via API.
+
+        Args:
+            file_content: Raw file bytes
+            file_name: Original filename
+            language: Document language (en/vi)
+            processing_mode: fast or ocr
+            csv_columns: CSV column names (comma-separated)
+            vision_failure_mode: graceful/strict/skip
+            timeout: Request timeout in seconds
+
+        Returns:
+            UploadResult with processing status
+        """
+        try:
+            # Prepare multipart form data
+            files = {"file": (file_name, file_content)}
+            data = {
+                "language": language,
+                "processing_mode": processing_mode,
+                "vision_failure_mode": vision_failure_mode,
+            }
+            if csv_columns:
+                data["csv_columns"] = csv_columns
+
+            # Make request with extended timeout
+            response = self._client.post(
+                f"{self._base_url}/api/v1/upload",
+                files=files,
+                data=data,
+                timeout=timeout,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return UploadResult(
+                    success=True,
+                    file_name=result.get("file_name", file_name),
+                    file_type=result.get("file_type", ""),
+                    chunks_count=result.get("chunks_count", 0),
+                    images_count=result.get("images_count", 0),
+                    message=result.get("message", "Upload successful"),
+                    processing_time=result.get("processing_time_seconds", 0.0),
+                )
+            else:
+                # Try to parse JSON error, fallback to status code
+                try:
+                    error = response.json().get("detail", "Unknown error")
+                except (json.JSONDecodeError, ValueError):
+                    error = f"HTTP {response.status_code}"
+                return UploadResult(
+                    success=False,
+                    file_name=file_name,
+                    error=error,
+                    message=f"Upload failed: {error}",
+                )
+
+        except httpx.TimeoutException:
+            return UploadResult(
+                success=False,
+                file_name=file_name,
+                error="Request timeout",
+                message="Processing took too long. Try a smaller file.",
+            )
+        except httpx.RequestError as e:
+            return UploadResult(
+                success=False,
+                file_name=file_name,
+                error=str(e),
+                message=f"Connection error: {e}",
+            )
+
+    def preview_upload(
+        self,
+        file_content: bytes,
+        file_name: str,
+        language: str = "en",
+        processing_mode: str = "fast",
+        csv_columns: Optional[str] = None,
+        vision_failure_mode: str = "graceful",
+        timeout: float = 300.0,
+    ) -> PreviewResult:
+        """
+        Upload file for preview processing (no save to Qdrant).
+
+        Args:
+            file_content: Raw file bytes
+            file_name: Original filename
+            language: Document language (en/vi)
+            processing_mode: fast or ocr
+            csv_columns: CSV column names (comma-separated)
+            vision_failure_mode: graceful/strict/skip
+            timeout: Request timeout in seconds
+
+        Returns:
+            PreviewResult with preview data and full data for later save
+        """
+        try:
+            files = {"file": (file_name, file_content)}
+            data = {
+                "language": language,
+                "processing_mode": processing_mode,
+                "vision_failure_mode": vision_failure_mode,
+            }
+            if csv_columns:
+                data["csv_columns"] = csv_columns
+
+            response = self._client.post(
+                f"{self._base_url}/api/v1/upload/preview",
+                files=files,
+                data=data,
+                timeout=timeout,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                # Parse preview chunks
+                preview_chunks = [
+                    PreviewChunk(
+                        text=c["text"],
+                        source_file=c["source_file"],
+                        page_number=c.get("page_number"),
+                        element_type=c.get("element_type", "text"),
+                        chunk_index=c["chunk_index"],
+                        file_type=c["file_type"],
+                    )
+                    for c in result.get("chunks", [])
+                ]
+                # Parse preview images
+                preview_images = [
+                    PreviewImage(
+                        caption=img["caption"],
+                        image_path=img["image_path"],
+                        page_number=img.get("page_number"),
+                        source_file=img["source_file"],
+                        image_hash=img["image_hash"],
+                    )
+                    for img in result.get("images", [])
+                ]
+
+                return PreviewResult(
+                    success=True,
+                    file_name=result.get("file_name", file_name),
+                    file_type=result.get("file_type", ""),
+                    preview_chunks=preview_chunks,
+                    preview_images=preview_images,
+                    total_chunks_count=result.get("total_chunks_count", 0),
+                    total_images_count=result.get("total_images_count", 0),
+                    processing_time=result.get("processing_time_seconds", 0.0),
+                    full_chunks_data=result.get("full_chunks_data", []),
+                    full_images_data=result.get("full_images_data", []),
+                    language=language,
+                )
+            else:
+                try:
+                    error = response.json().get("detail", "Unknown error")
+                except (json.JSONDecodeError, ValueError):
+                    error = f"HTTP {response.status_code}"
+                return PreviewResult(
+                    success=False,
+                    file_name=file_name,
+                    error=error,
+                )
+
+        except httpx.TimeoutException:
+            return PreviewResult(
+                success=False,
+                file_name=file_name,
+                error="Request timeout. Processing took too long.",
+            )
+        except httpx.RequestError as e:
+            return PreviewResult(
+                success=False,
+                file_name=file_name,
+                error=f"Connection error: {e}",
+            )
+
+    def save_upload(
+        self,
+        file_name: str,
+        file_type: str,
+        language: str,
+        chunks_data: List[Dict[str, Any]],
+        images_data: List[Dict[str, Any]] = None,
+        timeout: float = 300.0,
+    ) -> SaveResult:
+        """
+        Save processed chunks and images to Qdrant.
+
+        Args:
+            file_name: Original filename
+            file_type: File type (pdf, docx, csv)
+            language: Document language
+            chunks_data: List of chunk data dicts from preview
+            images_data: List of image data dicts from preview
+            timeout: Request timeout in seconds
+
+        Returns:
+            SaveResult with save status
+        """
+        try:
+            # Build request payload
+            payload = {
+                "file_name": file_name,
+                "file_type": file_type,
+                "language": language,
+                "chunks": chunks_data,
+                "images": images_data or [],
+            }
+
+            response = self._client.post(
+                f"{self._base_url}/api/v1/upload/save",
+                json=payload,
+                timeout=timeout,
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                return SaveResult(
+                    success=True,
+                    chunks_count=result.get("chunks_count", 0),
+                    images_count=result.get("images_count", 0),
+                    text_collection=result.get("text_collection", ""),
+                    image_collection=result.get("image_collection", ""),
+                )
+            else:
+                try:
+                    error = response.json().get("detail", "Unknown error")
+                except (json.JSONDecodeError, ValueError):
+                    error = f"HTTP {response.status_code}"
+                return SaveResult(
+                    success=False,
+                    error=error,
+                )
+
+        except httpx.TimeoutException:
+            return SaveResult(
+                success=False,
+                error="Request timeout. Save took too long.",
+            )
+        except httpx.RequestError as e:
+            return SaveResult(
+                success=False,
+                error=f"Connection error: {e}",
+            )
 
 
 def get_api_client() -> StreamlitAPIClient:

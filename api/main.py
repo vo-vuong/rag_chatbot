@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.config import get_settings
-from api.routers import chat, health, rag
+from api.routers import chat, health, rag, upload
 from config.logging_config import setup_logging
 
 # Setup logging with file rotation (logs/api/app.log)
@@ -48,6 +48,7 @@ def create_app() -> FastAPI:
     # Include routers
     app.include_router(chat.router, prefix=settings.api_prefix)
     app.include_router(rag.router, prefix=settings.api_prefix)
+    app.include_router(upload.router, prefix=settings.api_prefix)
     app.include_router(health.router, prefix=settings.api_prefix)
 
     return app

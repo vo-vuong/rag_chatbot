@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     default_top_k: int = DEFAULT_NUM_RETRIEVAL
     default_score_threshold: float = DEFAULT_SCORE_THRESHOLD
 
+    # Upload
+    max_upload_size_mb: int = 50  # Default 50MB max upload
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -6,6 +6,8 @@ from api.config import get_settings, Settings
 from api.services.chat_service import ChatService
 from api.services.rag_service import RAGService
 from api.services.session_service import SessionService
+from api.services.upload_service import UploadService
+from backend.document_processor import DocumentProcessor
 from backend.embeddings.openai_embeddings import OpenAIEmbeddingStrategy
 from backend.llms.openai_llm import OpenAILLM
 from backend.routing import QueryRouter
@@ -15,6 +17,7 @@ from backend.vector_db.qdrant_manager import QdrantManager
 _session_service: Optional[SessionService] = None
 _rag_service: Optional[RAGService] = None
 _chat_service: Optional[ChatService] = None
+_upload_service: Optional[UploadService] = None
 
 
 def get_session_service() -> SessionService:
@@ -101,3 +104,16 @@ def get_chat_service() -> ChatService:
             session_service=get_session_service(),
         )
     return _chat_service
+
+
+def get_upload_service() -> UploadService:
+    """Get or create UploadService singleton."""
+    global _upload_service
+    if _upload_service is None:
+        settings = get_settings()
+        _upload_service = UploadService(
+            settings=settings,
+            document_processor=DocumentProcessor(),
+            embedding=get_embedding(settings),
+        )
+    return _upload_service

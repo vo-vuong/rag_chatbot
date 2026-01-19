@@ -32,6 +32,14 @@ from config.constants import (
     VI,
     VIETNAMESE,
 )
+from ui.api_client import (
+    PreviewChunk,
+    PreviewImage,
+    PreviewResult,
+    SaveResult,
+    UploadResult,
+    get_api_client,
+)
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -59,11 +67,20 @@ class DataUploadUI:
         st.subheader(f"{header_number}.2. Upload Files", divider=True)
         self._render_upload_section()
 
-        # Save button
+        # Check for preview data and show save button
+        if self.session_manager.get("upload_preview_data"):
+            self._display_preview_results()
+
+            st.divider()
+            if st.button("💾 Save to Vector Database", type="primary", use_container_width=True):
+                self._handle_save_preview_data()
+
+        # Legacy: Save button for old workflow (chunks_df)
         if (
             self.session_manager.get("chunks_df") is not None
             and not self.session_manager.get("chunks_df").empty
             and not self.session_manager.get("data_saved_success")
+            and not self.session_manager.get("upload_preview_data")
         ):
             st.divider()
             if st.button("💾 Save to Vector Database", type="primary"):
@@ -138,10 +155,10 @@ class DataUploadUI:
                 st.subheader("📊 CSV Processing Configuration", divider="gray")
                 self._render_csv_column_selection(csv_files)
 
-            # Process button
+            # Process button - uses preview API for two-step workflow
             st.divider()
             if st.button("🚀 Process Files", type="primary", use_container_width=True):
-                self._process_uploaded_files(uploaded_files)
+                self._process_files_for_preview(uploaded_files)
 
     def _get_file_type(self, filename: str) -> str:
         """Determine file type from filename.
@@ -519,6 +536,463 @@ class DataUploadUI:
 
         except Exception as e:
             st.error(f"Error generating preview: {str(e)}")
+
+    def _process_file_via_api(
+        self,
+        uploaded_file,
+        status_text,
+    ) -> UploadResult:
+        """Process a single file via the upload API.
+
+        Args:
+            uploaded_file: Streamlit UploadedFile object
+            status_text: Streamlit element for status updates
+
+        Returns:
+            UploadResult with processing status
+        """
+        api_client = get_api_client()
+
+        # Get language from session
+        language = self.session_manager.get("language", "en")
+
+        # Get processing mode for PDFs
+        pdf_mode = self.session_manager.get("pdf_processing_mode", "no_ocr")
+        processing_mode = "ocr" if pdf_mode == "ocr" else "fast"
+
+        # Get vision failure mode
+        vision_failure_mode = self.session_manager.get(
+            "caption_failure_mode", "graceful"
+        )
+
+        # Get CSV columns if configured
+        csv_columns = None
+        csv_configs = getattr(st.session_state, "csv_processing_configs", {})
+        if uploaded_file.name in csv_configs:
+            selected_cols = csv_configs[uploaded_file.name].get("selected_columns", [])
+            if selected_cols:
+                csv_columns = ",".join(selected_cols)
+
+        # Read file content
+        file_content = uploaded_file.read()
+        uploaded_file.seek(0)  # Reset for potential reuse
+
+        status_text.info(f"📤 Uploading {uploaded_file.name} to API...")
+
+        # Upload via API
+        result = api_client.upload_file(
+            file_content=file_content,
+            file_name=uploaded_file.name,
+            language=language,
+            processing_mode=processing_mode,
+            csv_columns=csv_columns,
+            vision_failure_mode=vision_failure_mode,
+        )
+
+        return result
+
+    def _process_files_for_preview(self, uploaded_files: List) -> None:
+        """Process files via preview API and store results for user confirmation.
+
+        This implements the first step of the two-step upload workflow.
+
+        Args:
+            uploaded_files: List of uploaded file objects
+        """
+        try:
+            # Clear any previous preview data
+            self.session_manager.set("upload_preview_data", None)
+            self.session_manager.set("data_saved_success", False)
+
+            # Initialize progress tracking
+            progress_container = st.container()
+            with progress_container:
+                st.subheader("🔄 Processing Files for Preview", divider="gray")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                details_text = st.empty()
+
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    chunks_metric = st.empty()
+                with col2:
+                    images_metric = st.empty()
+                with col3:
+                    time_metric = st.empty()
+
+            api_client = get_api_client()
+
+            # Get settings
+            language = self.session_manager.get("language", "en")
+            pdf_mode = self.session_manager.get("pdf_processing_mode", "no_ocr")
+            processing_mode = "ocr" if pdf_mode == "ocr" else "fast"
+            vision_failure_mode = self.session_manager.get(
+                "caption_failure_mode", "graceful"
+            )
+
+            # Track results
+            all_preview_data: List[PreviewResult] = []
+            total_chunks = 0
+            total_images = 0
+            processed_files = 0
+            failed_files = 0
+            start_time = time.time()
+
+            for i, uploaded_file in enumerate(uploaded_files):
+                file_progress = (i + 1) / len(uploaded_files)
+                progress_bar.progress(file_progress)
+                status_text.markdown(
+                    f"**Processing file {i+1}/{len(uploaded_files)}**: `{uploaded_file.name}`"
+                )
+
+                # Get CSV columns if configured
+                csv_columns = None
+                csv_configs = getattr(st.session_state, "csv_processing_configs", {})
+                if uploaded_file.name in csv_configs:
+                    selected_cols = csv_configs[uploaded_file.name].get("selected_columns", [])
+                    if selected_cols:
+                        csv_columns = ",".join(selected_cols)
+
+                # Read file content
+                file_content = uploaded_file.read()
+                uploaded_file.seek(0)
+
+                details_text.info(f"📤 Processing {uploaded_file.name}...")
+
+                # Call preview API
+                result = api_client.preview_upload(
+                    file_content=file_content,
+                    file_name=uploaded_file.name,
+                    language=language,
+                    processing_mode=processing_mode,
+                    csv_columns=csv_columns,
+                    vision_failure_mode=vision_failure_mode,
+                )
+
+                if result.success:
+                    processed_files += 1
+                    total_chunks += result.total_chunks_count
+                    total_images += result.total_images_count
+                    all_preview_data.append(result)
+                    details_text.success(
+                        f"✅ {result.file_name}: {result.total_chunks_count} chunks, "
+                        f"{result.total_images_count} images ({result.processing_time:.1f}s)"
+                    )
+                else:
+                    failed_files += 1
+                    details_text.error(f"❌ {result.file_name}: {result.error}")
+
+                # Update metrics
+                chunks_metric.metric("Total Chunks", total_chunks)
+                images_metric.metric("Total Images", total_images)
+                elapsed = round(time.time() - start_time, 1)
+                time_metric.metric("Elapsed Time", f"{elapsed}s")
+
+            # Complete progress
+            progress_bar.progress(1.0)
+            total_time = round(time.time() - start_time, 2)
+            status_text.markdown("**Processing Complete!**")
+
+            # Brief pause then clear progress
+            time.sleep(1)
+            progress_container.empty()
+
+            # Store preview data in session for save step
+            if all_preview_data:
+                self.session_manager.set("upload_preview_data", all_preview_data)
+                st.success(
+                    f"🎉 Processed {processed_files} file(s): "
+                    f"{total_chunks} chunks, {total_images} images"
+                )
+                st.info(
+                    "👁️ Review the preview below, then click "
+                    "**Save to Vector Database** to store the data."
+                )
+            else:
+                st.error("❌ No files were processed successfully")
+
+            if failed_files > 0:
+                st.warning(f"⚠️ {failed_files} file(s) failed to process")
+
+        except Exception as e:
+            st.error(f"❌ Processing Error: {str(e)}")
+            logger.error(f"Preview processing error: {e}", exc_info=True)
+
+    def _display_preview_results(self) -> None:
+        """Display preview results from the preview API call."""
+        preview_data: List[PreviewResult] = self.session_manager.get("upload_preview_data", [])
+
+        if not preview_data:
+            return
+
+        st.subheader("📝 Preview Results", divider="gray")
+
+        # Summary metrics
+        total_chunks = sum(p.total_chunks_count for p in preview_data)
+        total_images = sum(p.total_images_count for p in preview_data)
+        total_preview_chunks = sum(len(p.preview_chunks) for p in preview_data)
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Files", len(preview_data))
+        with col2:
+            st.metric("Total Chunks", total_chunks)
+        with col3:
+            st.metric("Total Images", total_images)
+        with col4:
+            st.metric("Preview Chunks", total_preview_chunks)
+
+        if total_chunks > total_preview_chunks:
+            st.info(
+                f"📊 Showing first {total_preview_chunks} of {total_chunks} chunks. "
+                f"All {total_chunks} chunks will be saved."
+            )
+
+        # Display preview chunks per file
+        for preview_result in preview_data:
+            with st.expander(
+                f"📄 {preview_result.file_name} ({preview_result.total_chunks_count} chunks)",
+                expanded=len(preview_data) == 1,
+            ):
+                if preview_result.preview_chunks:
+                    # Show first few preview chunks
+                    display_count = min(5, len(preview_result.preview_chunks))
+                    for idx, chunk in enumerate(preview_result.preview_chunks[:display_count]):
+                        st.markdown(f"**Chunk {chunk.chunk_index + 1}:**")
+                        preview_text = chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text
+                        st.text_area(
+                            f"Content",
+                            preview_text,
+                            height=100,
+                            disabled=True,
+                            label_visibility="collapsed",
+                            key=f"preview_{preview_result.file_name}_{idx}",
+                        )
+                        if chunk.page_number:
+                            st.caption(f"Page: {chunk.page_number} | Type: {chunk.element_type}")
+
+                    if len(preview_result.preview_chunks) > display_count:
+                        st.info(
+                            f"Showing {display_count} of {len(preview_result.preview_chunks)} preview chunks"
+                        )
+
+                # Show image count if any
+                if preview_result.preview_images:
+                    st.markdown(f"**🖼️ {len(preview_result.preview_images)} image(s) with captions**")
+
+    def _handle_save_preview_data(self) -> None:
+        """Save preview data to Qdrant via the save API.
+
+        This implements the second step of the two-step upload workflow.
+        """
+        preview_data: List[PreviewResult] = self.session_manager.get("upload_preview_data", [])
+
+        if not preview_data:
+            st.warning("No preview data to save")
+            return
+
+        try:
+            # Progress tracking
+            progress_container = st.container()
+            with progress_container:
+                st.subheader("💾 Saving to Vector Database", divider="gray")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+
+            api_client = get_api_client()
+            total_chunks_saved = 0
+            total_images_saved = 0
+            saved_files = 0
+            failed_files = 0
+            text_collection = ""
+            image_collection = ""
+
+            for i, preview_result in enumerate(preview_data):
+                file_progress = (i + 1) / len(preview_data)
+                progress_bar.progress(file_progress)
+                status_text.markdown(f"**Saving {preview_result.file_name}...**")
+
+                # Call save API
+                save_result = api_client.save_upload(
+                    file_name=preview_result.file_name,
+                    file_type=preview_result.file_type,
+                    language=preview_result.language,
+                    chunks_data=preview_result.full_chunks_data,
+                    images_data=preview_result.full_images_data,
+                )
+
+                if save_result.success:
+                    saved_files += 1
+                    total_chunks_saved += save_result.chunks_count
+                    total_images_saved += save_result.images_count
+                    text_collection = save_result.text_collection
+                    image_collection = save_result.image_collection
+                else:
+                    failed_files += 1
+                    st.error(f"❌ Failed to save {preview_result.file_name}: {save_result.error}")
+
+            # Complete progress
+            progress_bar.progress(1.0)
+            status_text.markdown("**Save Complete!**")
+
+            time.sleep(1)
+            progress_container.empty()
+
+            # Clear preview data
+            self.session_manager.set("upload_preview_data", None)
+            self.session_manager.set("data_saved_success", True)
+
+            # Show success message
+            if saved_files > 0:
+                st.success(
+                    f"🎉 Successfully saved {saved_files} file(s)!\n\n"
+                    f"- **{total_chunks_saved}** chunks → `{text_collection}`\n"
+                    f"- **{total_images_saved}** images → `{image_collection}`"
+                )
+
+            if failed_files > 0:
+                st.warning(f"⚠️ {failed_files} file(s) failed to save")
+
+        except Exception as e:
+            st.error(f"❌ Save Error: {str(e)}")
+            logger.error(f"Save error: {e}", exc_info=True)
+
+    def _process_uploaded_files_via_api(
+        self, uploaded_files: List
+    ) -> None:
+        """Process uploaded files via API with progress tracking.
+
+        Args:
+            uploaded_files: List of uploaded file objects
+        """
+        try:
+            # Initialize progress tracking
+            progress_container = st.container()
+            with progress_container:
+                st.subheader("🔄 Processing & Uploading Files", divider="gray")
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                details_text = st.empty()
+
+                # Metrics display
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    chunks_metric = st.empty()
+                with col2:
+                    images_metric = st.empty()
+                with col3:
+                    time_metric = st.empty()
+
+            # Track results
+            results = []
+            total_chunks = 0
+            total_images = 0
+            processed_files = 0
+            failed_files = 0
+            start_time = time.time()
+
+            for i, uploaded_file in enumerate(uploaded_files):
+                file_progress = (i + 1) / len(uploaded_files)
+                progress_bar.progress(file_progress)
+                status_text.markdown(
+                    f"**Processing file {i+1}/{len(uploaded_files)}**: `{uploaded_file.name}`"
+                )
+
+                # Process via API
+                result = self._process_file_via_api(
+                    uploaded_file=uploaded_file,
+                    status_text=details_text,
+                )
+
+                results.append(result)
+
+                if result.success:
+                    processed_files += 1
+                    total_chunks += result.chunks_count
+                    total_images += result.images_count
+                    details_text.success(
+                        f"✅ {result.file_name}: {result.chunks_count} chunks, "
+                        f"{result.images_count} images ({result.processing_time:.1f}s)"
+                    )
+                else:
+                    failed_files += 1
+                    details_text.error(f"❌ {result.file_name}: {result.error}")
+
+                # Update metrics
+                chunks_metric.metric("Total Chunks", total_chunks)
+                images_metric.metric("Total Images", total_images)
+                elapsed = round(time.time() - start_time, 1)
+                time_metric.metric("Elapsed Time", f"{elapsed}s")
+
+            # Complete progress
+            progress_bar.progress(1.0)
+            total_time = round(time.time() - start_time, 2)
+            status_text.markdown("**Processing Complete!**")
+
+            # Brief pause then clear progress
+            time.sleep(1)
+            progress_container.empty()
+
+            # Display final results
+            self._display_api_upload_results(
+                results=results,
+                total_chunks=total_chunks,
+                total_images=total_images,
+                processed_files=processed_files,
+                failed_files=failed_files,
+                total_time=total_time,
+            )
+
+        except Exception as e:
+            st.error(f"❌ Upload Error: {str(e)}")
+            logger.error(f"API upload error: {e}", exc_info=True)
+
+    def _display_api_upload_results(
+        self,
+        results: List,
+        total_chunks: int,
+        total_images: int,
+        processed_files: int,
+        failed_files: int,
+        total_time: float,
+    ) -> None:
+        """Display results from API-based file upload.
+
+        Args:
+            results: List of UploadResult objects
+            total_chunks: Total chunks uploaded
+            total_images: Total images uploaded
+            processed_files: Number of successfully processed files
+            failed_files: Number of failed files
+            total_time: Total processing time in seconds
+        """
+        if processed_files > 0:
+            st.success(
+                f"🎉 Successfully uploaded {processed_files} file(s)!"
+            )
+
+            # Statistics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Files Processed", f"{processed_files}/{len(results)}")
+            with col2:
+                st.metric("Total Chunks", total_chunks)
+            with col3:
+                st.metric("Total Images", total_images)
+            with col4:
+                st.metric("Processing Time", f"{total_time}s")
+
+            # Mark as saved (API already saved to Qdrant)
+            self.session_manager.set("data_saved_success", True)
+
+        if failed_files > 0:
+            st.warning(f"⚠️ {failed_files} file(s) failed to process")
+
+            # Show failed file details
+            with st.expander("Failed Files Details", expanded=True):
+                for result in results:
+                    if not result.success:
+                        st.error(f"**{result.file_name}**: {result.error}")
 
     def _process_uploaded_files(self, uploaded_files: List) -> None:
         """

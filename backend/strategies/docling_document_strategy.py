@@ -287,7 +287,13 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             )
 
     def _extract_surrounding_context(
-        self, doc, pic, all_items: list, pic_index: int, max_tokens: int = 200
+        self,
+        doc,
+        pic,
+        all_items: list,
+        pic_index: int,
+        headings: Optional[List[str]] = None,
+        max_tokens: int = 200,
     ) -> str:
         """Extract surrounding text context for image captioning.
 
@@ -296,12 +302,20 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             pic: PictureItem being processed
             all_items: List of (item, level) tuples from doc.iterate_items()
             pic_index: Index of pic in all_items
+            headings: List of heading strings for this image's section
             max_tokens: Maximum tokens for context (default: 200)
 
         Returns:
-            Combined context string (preceding text + figure caption)
+            Combined context string (headings + preceding text + figure caption)
         """
         from docling_core.types.doc import TextItem
+
+        context_parts = []
+
+        # Add headings with bold highlighting (section hierarchy)
+        if headings:
+            headings_str = " > ".join(f"**[{h}]**" for h in headings)
+            context_parts.append(f"Section: {headings_str}")
 
         # Get preceding text items (up to 2)
         preceding_text = []
@@ -312,6 +326,9 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
                 if len(preceding_text) >= 2:
                     break
 
+        if preceding_text:
+            context_parts.extend(preceding_text)
+
         # Get figure caption from PDF structure
         docling_caption = ""
         if hasattr(pic, "caption_text"):
@@ -320,8 +337,6 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             except Exception:
                 pass
 
-        # Combine context
-        context_parts = preceding_text
         if docling_caption:
             context_parts.append(f"Figure caption: {docling_caption}")
 
@@ -344,6 +359,8 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             file_path: Path to the document file (may be temp file)
             original_filename: Original filename from upload (preferred for metadata)
         """
+        from docling_core.types.doc import DocItemLabel
+
         from backend.utils.image_storage import ImageStorageUtility
 
         image_data = []
@@ -359,12 +376,31 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
             create_subdirs=True,
         )
 
-        # Build item index for context extraction
+        # Build item index for context extraction and track headings
         all_items = list(doc.iterate_items())
         pic_to_index = {}
+        pic_to_headings = {}  # Map picture ID to its heading hierarchy
+
+        # Track current heading hierarchy as we iterate
+        current_headings = []
+
         for idx, (item, level) in enumerate(all_items):
+            # Check if this item is a section header
+            if hasattr(item, "label") and item.label == DocItemLabel.SECTION_HEADER:
+                heading_text = item.text if hasattr(item, "text") else ""
+                if heading_text:
+                    # Get heading level from the item or use document level
+                    heading_level = level if level > 0 else 1
+
+                    # Trim headings to current level and add new heading
+                    # Level 1 = top-level, Level 2 = subsection, etc.
+                    current_headings = current_headings[:heading_level - 1]
+                    current_headings.append(heading_text)
+
+            # Track picture positions and their headings
             if hasattr(item, "image") and item.image:
                 pic_to_index[id(item)] = idx
+                pic_to_headings[id(item)] = list(current_headings)  # Copy current state
 
         for i, pic in enumerate(doc.pictures):
             try:
@@ -400,12 +436,15 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
                     except Exception:
                         pass
 
-                # Extract surrounding context for Vision API
+                # Get headings for this image (needed for surrounding_context)
+                headings = pic_to_headings.get(id(pic), [])
+
+                # Extract surrounding context for Vision API (includes headings)
                 pic_index = pic_to_index.get(id(pic), -1)
                 surrounding_context = ""
                 if pic_index >= 0:
                     surrounding_context = self._extract_surrounding_context(
-                        doc, pic, all_items, pic_index, max_tokens=200
+                        doc, pic, all_items, pic_index, headings=headings, max_tokens=200
                     )
 
                 image_data.append({
@@ -413,6 +452,7 @@ class DoclingDocumentStrategy(DocumentProcessingStrategy):
                     "caption": "",  # Filled by _caption_images
                     "docling_caption": docling_caption,
                     "surrounding_context": surrounding_context,  # NEW: for Vision API
+                    "headings": headings,  # NEW: document headings hierarchy
                     "image_hash": image_hash,
                     "page_number": page_num,
                     "source_file": display_name,  # Track source document (original filename)

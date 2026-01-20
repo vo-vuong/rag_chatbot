@@ -120,6 +120,7 @@ class PreviewImage(BaseModel):
     bbox: Optional[Dict[str, float]] = None
     docling_caption: Optional[str] = None
     surrounding_context: Optional[str] = None
+    headings: List[str] = []  # Document headings hierarchy for this image
     caption_cost: float = 0.0
     file_type: str = ""
     language: str = "en"
@@ -165,6 +166,7 @@ class FullImageData(BaseModel):
     bbox: Optional[Dict[str, float]] = None  # Bounding box: left, top, right, bottom
     docling_caption: Optional[str] = None  # Caption from Docling extraction
     surrounding_context: Optional[str] = None  # Text context around the image
+    headings: List[str] = []  # Document headings hierarchy for this image
     caption_cost: float = 0.0  # Vision API cost for captioning
     file_type: str = ""  # Source file type (pdf, docx)
     language: str = "en"  # Document language

@@ -233,6 +233,20 @@ class DoclingChunker:
             logger.error(f"Docling chunking failed: {e}")
             return EmptyChunkResult(str(e), chunker_type="docling")
 
+    def _format_headings(self, headings: List[str]) -> str:
+        """Format headings with bold highlighting for consistent display.
+
+        Args:
+            headings: List of heading strings in hierarchical order
+
+        Returns:
+            Formatted string: "Section: **[Heading 1]** > **[Heading 2]** > ..."
+        """
+        if not headings:
+            return ""
+        headings_str = " > ".join(f"**[{h}]**" for h in headings)
+        return f"Section: {headings_str}"
+
     def _convert_chunks(
         self, chunks: List, doc: Any, source_file: str = "Unknown"
     ) -> List[DoclingChunkElement]:
@@ -250,20 +264,22 @@ class DoclingChunker:
         converted = []
 
         for i, chunk in enumerate(chunks):
-            # Get contextualized text (includes heading context)
-            try:
-                text = self.chunker.contextualize(chunk=chunk)
-            except Exception as e:
-                # Fallback to raw text
-                logger.debug(f"Contextualize failed for chunk {i}: {e}")
-                text = chunk.text if hasattr(chunk, "text") else str(chunk)
-
-            # Extract metadata
-            # Handle headings - check for both attribute existence AND non-None value
+            # Extract headings first (needed for custom contextualization)
             headings = []
             if hasattr(chunk, "meta") and hasattr(chunk.meta, "headings"):
                 if chunk.meta.headings is not None:
                     headings = list(chunk.meta.headings)
+
+            # Get raw chunk text
+            raw_text = chunk.text if hasattr(chunk, "text") else str(chunk)
+
+            # Build contextualized text with highlighted headings
+            # Format: "Section: [Heading 1] > [Heading 2]\n\n<chunk text>"
+            headings_prefix = self._format_headings(headings)
+            if headings_prefix:
+                text = f"{headings_prefix}\n\n{raw_text}"
+            else:
+                text = raw_text
 
             metadata = {
                 "chunk_index": i,

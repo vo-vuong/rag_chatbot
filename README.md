@@ -55,7 +55,9 @@ streamlit run app.py
 ### Basic Workflow
 
 1. **Setup**: Configure API keys in the sidebar
-2. **Upload**: Add PDF/CSV/DOCX files via Upload page; select processing strategy
+2. **Upload**: Add PDF/CSV/DOCX files via Upload page with two-step workflow:
+   - **Preview**: Process files and review extracted chunks/images (no save)
+   - **Save**: Commit approved data to Qdrant vector database
 3. **Vision Config**: Set caption failure mode (Graceful/Strict/Skip) for multimodal PDFs
 4. **Chat**: Query your documents; results include relevant text and images with source attribution
 5. **Manage**: Inspect collections and pagination via Data Management
@@ -99,59 +101,54 @@ QDRANT_PORT=6333
 ├───────────────────┤               ├───────────────────┤
 │  StreamlitAPI     │               │  /api/v1/chat     │
 │  Client (httpx)   │               │  /api/v1/rag      │
-└───────────────────┘               │  /api/v1/health   │
+└───────────────────┘               │  /api/v1/upload   │
+                                    │  /api/v1/health   │
                                     └─────────┬─────────┘
                                               │
-                          ┌───────────────────┼───────────────────┐
-                          ▼                   ▼                   ▼
-                   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-                   │ChatService  │    │RAGService   │    │SessionSvc   │
-                   │(Orchestrate)│    │(Retrieval)  │    │(State)      │
-                   └─────────────┘    └─────────────┘    └─────────────┘
-                          │
-              ┌───────────┴───────────┐
-              ▼                       ▼
-       ┌─────────────┐         ┌─────────────┐
-       │ QueryRouter │         │ Qdrant DB   │
-       │ (LLM-based) │         │ (Vector)    │
-       └─────────────┘         └─────────────┘
+                    ┌─────────────────────────┼─────────────────────────┐
+                    ▼                         ▼                         ▼
+             ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
+             │ChatService  │          │RAGService   │          │UploadSvc    │
+             │(Orchestrate)│          │(Retrieval)  │          │(2-Step)     │
+             └─────────────┘          └─────────────┘          └─────────────┘
+                    │                        │                        │
+        ┌───────────┴───────────┐            │            ┌───────────┴───────────┐
+        ▼                       ▼            ▼            ▼                       ▼
+ ┌─────────────┐         ┌─────────────┐  ┌──────────────────┐          ┌─────────────┐
+ │QueryRouter  │         │SessionSvc   │  │DocumentProcessor │          │ Qdrant DB   │
+ │(LLM-based)  │         │(State)      │  │(Docling+Vision)  │          │(Text+Image) │
+ └─────────────┘         └─────────────┘  └──────────────────┘          └─────────────┘
 ```
 
 ### API Endpoints
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/chat/query` | POST | Synchronous chat with RAG |
-| `/api/v1/chat/query/stream` | POST | SSE streaming chat |
-| `/api/v1/rag/search` | POST | Vector search without LLM |
-| `/api/v1/health` | GET | Health check with Qdrant status |
+| Endpoint                    | Method | Description                               |
+| --------------------------- | ------ | ----------------------------------------- |
+| `/api/v1/chat/query`        | POST   | Synchronous chat with RAG                 |
+| `/api/v1/chat/query/stream` | POST   | SSE streaming chat                        |
+| `/api/v1/rag/search`        | POST   | Vector search without LLM                 |
+| `/api/v1/upload/preview`    | POST   | Process file and return preview (no save) |
+| `/api/v1/upload/save`       | POST   | Save processed chunks/images to Qdrant    |
+| `/api/v1/health`            | GET    | Health check with Qdrant status           |
 
 ## Development
 
 The project uses a modular architecture with Strategy, Factory, Singleton, and Dependency Injection patterns.
 
 ### Project Structure
+
 - `api/`: FastAPI REST API layer (routers, services, models)
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
 
 ### Design Patterns
+
 - **Strategy Pattern**: Document processors, embeddings, LLMs
 - **Singleton Pattern**: SessionManager, PromptManager
 - **Factory Pattern**: EmbeddingFactory, LLMFactory
 - **Dependency Injection**: FastAPI dependencies
 - **Lazy Initialization**: Docling converter, Image captioner
-
-## Documentation
-
-Comprehensive documentation available in `docs/`:
-
-- **[Project Overview & PDR](docs/project-overview-pdr.md)**: Features, requirements, architecture
-- **[Codebase Summary](docs/codebase-summary.md)**: Component details, data flows
-- **[Code Standards](docs/code-standards.md)**: Development guidelines, patterns
-- **[System Architecture](docs/system-architecture.md)**: Layer diagrams, integration points
-- **[Project Roadmap](docs/project-roadmap.md)**: Version history, planned features
 
 ## Technology Stack
 

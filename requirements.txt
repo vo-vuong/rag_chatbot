@@ -41,8 +41,8 @@ detect-secrets==1.5.0
 dill==0.4.0
 distlib==0.3.7
 distro==1.9.0
-docling==2.66.0
-docling-core==2.57.0
+docling==2.68.0
+docling-core==2.59.0
 docling-ibm-models==3.10.3
 docling-parse==4.7.2
 easyocr==1.7.2

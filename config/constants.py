@@ -93,12 +93,7 @@ ASSISTANT = "assistant"
 # LLM TYPES & PROVIDERS
 # ============================================================
 ONLINE_LLM = "online_llm"
-
 OPENAI = "OpenAI"
-
-# Default chunk size and overlap
-DEFAULT_CHUNK_SIZE = 200
-DEFAULT_CHUNK_OVERLAP = 20
 
 # Text retrieval defaults
 DEFAULT_NUM_RETRIEVAL = 5

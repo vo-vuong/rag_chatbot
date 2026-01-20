@@ -69,10 +69,8 @@ class SessionManager:
             # ============================================================
             'llm_type': 'online_llm',  # OpenAI only
             'llm_name': None,  # Model name
-            'online_llms': None,  # Online LLM instance (legacy)
             'llm_api_key': None,  # API key for OpenAI
             'model_version': None,  # Specific model version
-            'selected_model_display': None,  # Display name
             'llm_model': None,  # OpenAILLM instance
             'llm_model_name': None,  # Model name (e.g., "gpt-4o-mini")
             'system_prompt': None,  # System prompt
@@ -91,13 +89,6 @@ class SessionManager:
             'data_saved_success': False,  # Data saved to vector DB
             'source_data': 'UPLOAD',  # 'UPLOAD' or 'DB'
             # ============================================================
-            # CHUNKING CONFIGURATION
-            # ============================================================
-            'chunk_size': 200,  # Chunk size in tokens
-            'chunk_overlap': 20,  # Overlap between chunks
-            'chunkOption': None,  # Chunking strategy
-            'semantic_embedding_option': 'TF-IDF',
-            # ============================================================
             # PDF PROCESSING CONFIGURATION
             # ============================================================
             'pdf_processing_mode': 'no_ocr',  # no_ocr, ocr
@@ -110,7 +101,6 @@ class SessionManager:
             # ============================================================
             # SEARCH & RETRIEVAL
             # ============================================================
-            'search_option': 'Vector Search',
             'number_docs_retrieval': DEFAULT_NUM_RETRIEVAL,
             'score_threshold': DEFAULT_SCORE_THRESHOLD,
             # ============================================================
@@ -125,11 +115,6 @@ class SessionManager:
             # CHAT HISTORY
             # ============================================================
             'chat_history': [],
-            # ============================================================
-            # UI STATE
-            # ============================================================
-            'open_dialog': None,
-            'show_settings': False,  # Show advanced settings
             # ============================================================
             # PROMPT MANAGEMENT
             # ============================================================
@@ -582,7 +567,9 @@ class SessionManager:
 
     def get_image_score_threshold(self) -> float:
         """Get image search score threshold."""
-        return st.session_state.get("image_score_threshold", DEFAULT_IMAGE_SCORE_THRESHOLD)
+        return st.session_state.get(
+            "image_score_threshold", DEFAULT_IMAGE_SCORE_THRESHOLD
+        )
 
     def set_image_score_threshold(self, threshold: float) -> None:
         """Set image search score threshold."""
@@ -736,9 +723,13 @@ class SessionManager:
             'embedding_model': embedding_name,
             'collection': collection_name,
             'total_docs': str(doc_count),
-            'num_retrieval': str(self.get('number_docs_retrieval', DEFAULT_NUM_RETRIEVAL)),
+            'num_retrieval': str(
+                self.get('number_docs_retrieval', DEFAULT_NUM_RETRIEVAL)
+            ),
             'temperature': str(self.get('temperature', 0.2)),
-            'score_threshold': str(self.get('score_threshold', DEFAULT_SCORE_THRESHOLD)),
+            'score_threshold': str(
+                self.get('score_threshold', DEFAULT_SCORE_THRESHOLD)
+            ),
         }
 
     def get_status_summary(self) -> Dict[str, bool]:

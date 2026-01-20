@@ -7,8 +7,6 @@ from pydantic_settings import BaseSettings
 
 from config.constants import (
     DEFAULT_LLM_MODEL,
-    DEFAULT_NUM_RETRIEVAL,
-    DEFAULT_SCORE_THRESHOLD,
     IMAGE_COLLECTION_NAME,
     OPENAI_API_KEY,
     OPENAI_DEFAULT_EMBEDDING_DIMENSION,
@@ -51,10 +49,6 @@ class Settings(BaseSettings):
     # LLM
     llm_model: str = DEFAULT_LLM_MODEL
     llm_temperature: float = 0.2
-
-    # Retrieval defaults
-    default_top_k: int = DEFAULT_NUM_RETRIEVAL
-    default_score_threshold: float = DEFAULT_SCORE_THRESHOLD
 
     # Upload
     max_upload_size_mb: int = 50  # Default 50MB max upload

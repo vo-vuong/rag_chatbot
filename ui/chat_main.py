@@ -9,7 +9,8 @@ import httpx
 import streamlit as st
 
 from backend.session_manager import SessionManager
-from ui.api_client import get_api_client, UIChunk, UIImage
+from config.constants import DEFAULT_NUM_RETRIEVAL, DEFAULT_SCORE_THRESHOLD
+from ui.api_client import UIChunk, UIImage, get_api_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -186,8 +187,12 @@ class ChatMainUI:
                     response = self._generate_response(prompt)
 
                     # Get image data from session state (now typed UIImage list)
-                    images: List[UIImage] = st.session_state.get("last_response_images", [])
-                    chat_mode = self.session_manager.get("chat_mode", "rag")  # Default to rag
+                    images: List[UIImage] = st.session_state.get(
+                        "last_response_images", []
+                    )
+                    chat_mode = self.session_manager.get(
+                        "chat_mode", "rag"
+                    )  # Default to rag
 
                     # Get route info from session state
                     route = st.session_state.get("last_response_route")
@@ -220,7 +225,9 @@ class ChatMainUI:
                     # Save message with images and route to chat history
                     image_paths = [img.image_path for img in images]
                     image_captions = [img.caption for img in images]
-                    self._add_message("assistant", response, image_paths, image_captions, route)
+                    self._add_message(
+                        "assistant", response, image_paths, image_captions, route
+                    )
 
                     # Clear stored images after display
                     if "last_response_images" in st.session_state:
@@ -229,7 +236,14 @@ class ChatMainUI:
                     if "last_response_route" in st.session_state:
                         del st.session_state.last_response_route
 
-    def _add_message(self, role: str, content: str, image_paths: List[str] = None, image_captions: List[str] = None, route: str = None) -> None:
+    def _add_message(
+        self,
+        role: str,
+        content: str,
+        image_paths: List[str] = None,
+        image_captions: List[str] = None,
+        route: str = None,
+    ) -> None:
         """Add message to chat history with optional images and route."""
         chat_history = self.session_manager.get("chat_history", [])
         message = {"role": role, "content": content}
@@ -252,8 +266,8 @@ class ChatMainUI:
             api_client = get_api_client()
 
             selected_mode = self.session_manager.get("chat_mode", "rag")
-            num_docs = self.session_manager.get("number_docs_retrieval", 3)
-            score_threshold = self.session_manager.get("score_threshold", 0.5)
+            num_docs = self.session_manager.get("number_docs_retrieval", DEFAULT_NUM_RETRIEVAL)
+            score_threshold = self.session_manager.get("score_threshold", DEFAULT_SCORE_THRESHOLD)
 
             result = api_client.chat(
                 query=query,
@@ -300,7 +314,9 @@ class ChatMainUI:
                     st.caption(f"📄 Page: {chunk.page_number}")
                 if chunk.point_id:
                     st.caption(f"🔑 Point ID: `{chunk.point_id}`")
-                st.text(chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text)
+                st.text(
+                    chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text
+                )
                 st.markdown("---")
 
     def _display_response_images(self, images: List[UIImage]) -> None:
@@ -333,7 +349,7 @@ class ChatMainUI:
                         img.image_path,
                         caption=f"📌 {safe_caption}",
                         width=600,
-                        output_format="auto"
+                        output_format="auto",
                     )
                     logger.info(f"Image displayed successfully: {img.image_path}")
 
@@ -346,7 +362,10 @@ class ChatMainUI:
 
                 else:
                     from pathlib import Path
-                    st.error(f"🖼️ Image not found or invalid: {Path(img.image_path).name}")
+
+                    st.error(
+                        f"🖼️ Image not found or invalid: {Path(img.image_path).name}"
+                    )
                     logger.warning(f"Image validation failed: {img.image_path}")
 
             except Exception as e:
@@ -367,7 +386,9 @@ class ChatMainUI:
             try:
                 # Check if path is within allowed directory (Python 3.9+)
                 if not img_path_resolved.is_relative_to(extracted_images_dir):
-                    logger.warning(f"Security: Image path outside allowed directory: {image_path}")
+                    logger.warning(
+                        f"Security: Image path outside allowed directory: {image_path}"
+                    )
                     return False
             except (ValueError, AttributeError):
                 # Fallback for older Python or invalid paths
@@ -384,7 +405,14 @@ class ChatMainUI:
             if img_path_resolved.stat().st_size == 0:
                 logger.warning(f"Image file is empty: {img_path_resolved}")
                 return False
-            if img_path_resolved.suffix.lower() not in ('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp'):
+            if img_path_resolved.suffix.lower() not in (
+                '.png',
+                '.jpg',
+                '.jpeg',
+                '.gif',
+                '.bmp',
+                '.webp',
+            ):
                 logger.warning(f"Invalid image extension: {img_path_resolved.suffix}")
                 return False
 

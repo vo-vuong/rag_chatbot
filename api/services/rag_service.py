@@ -12,6 +12,7 @@ from backend.embeddings.embedding_strategy import EmbeddingStrategy
 from backend.models import ChunkElement, ImageElement
 from backend.routing import QueryRouter
 from backend.vector_db.qdrant_manager import QdrantManager
+from config.constants import DEFAULT_IMAGE_NUM_RETRIEVAL, DEFAULT_IMAGE_SCORE_THRESHOLD
 
 logger = logging.getLogger(__name__)
 
@@ -84,8 +85,8 @@ class RAGService:
     def search_images(
         self,
         query: str,
-        top_k: int = 1,
-        score_threshold: float = 0.6,
+        top_k: int = DEFAULT_IMAGE_NUM_RETRIEVAL,
+        score_threshold: float = DEFAULT_IMAGE_SCORE_THRESHOLD,
     ) -> List[ImageElement]:
         """
         Search image collection.
@@ -112,7 +113,7 @@ class RAGService:
         query: str,
         top_k: int = 3,
         score_threshold: float = 0.5,
-        image_score_threshold: float = 0.6,
+        image_score_threshold: float = DEFAULT_IMAGE_SCORE_THRESHOLD,
     ) -> SearchResult:
         """
         Search with automatic routing.
@@ -126,7 +127,9 @@ class RAGService:
             chunks = self.search_text(query, top_k, score_threshold)
             return SearchResult(chunks=chunks, route=route, reasoning=reasoning)
         else:
-            images = self.search_images(query, top_k=1, score_threshold=image_score_threshold)
+            images = self.search_images(
+                query, top_k=DEFAULT_IMAGE_NUM_RETRIEVAL, score_threshold=image_score_threshold
+            )
             # Convert ImageElement to ChunkElement for unified interface
             chunks = [
                 ChunkElement(

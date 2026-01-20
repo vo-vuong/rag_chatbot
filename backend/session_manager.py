@@ -15,6 +15,10 @@ import streamlit as st
 from backend.document_processor import DocumentProcessor, ProcessingResult
 from backend.prompts.prompt_manager import PromptManager
 from config.constants import (
+    DEFAULT_IMAGE_NUM_RETRIEVAL,
+    DEFAULT_IMAGE_SCORE_THRESHOLD,
+    DEFAULT_NUM_RETRIEVAL,
+    DEFAULT_SCORE_THRESHOLD,
     DOCLING_CONFIG,
     PAGE_CHAT,
 )
@@ -107,14 +111,14 @@ class SessionManager:
             # SEARCH & RETRIEVAL
             # ============================================================
             'search_option': 'Vector Search',
-            'number_docs_retrieval': 3,
-            'score_threshold': 0.5,  # Minimum similarity score
+            'number_docs_retrieval': DEFAULT_NUM_RETRIEVAL,
+            'score_threshold': DEFAULT_SCORE_THRESHOLD,
             # ============================================================
             # IMAGE SEARCH CONFIGURATION
             # ============================================================
             'image_collection_name': 'rag_chatbot_images',  # Image collection
-            'image_score_threshold': 0.6,  # Higher threshold for images
-            'image_top_k': 1,  # Return only best match
+            'image_score_threshold': DEFAULT_IMAGE_SCORE_THRESHOLD,
+            'image_top_k': DEFAULT_IMAGE_NUM_RETRIEVAL,
             'image_qdrant_manager': None,  # Lazy initialization
             'enable_image_search': True,  # Enable image search
             # ============================================================
@@ -578,7 +582,7 @@ class SessionManager:
 
     def get_image_score_threshold(self) -> float:
         """Get image search score threshold."""
-        return st.session_state.get("image_score_threshold", 0.6)
+        return st.session_state.get("image_score_threshold", DEFAULT_IMAGE_SCORE_THRESHOLD)
 
     def set_image_score_threshold(self, threshold: float) -> None:
         """Set image search score threshold."""
@@ -732,9 +736,9 @@ class SessionManager:
             'embedding_model': embedding_name,
             'collection': collection_name,
             'total_docs': str(doc_count),
-            'num_retrieval': str(self.get('number_docs_retrieval', 3)),
+            'num_retrieval': str(self.get('number_docs_retrieval', DEFAULT_NUM_RETRIEVAL)),
             'temperature': str(self.get('temperature', 0.2)),
-            'score_threshold': str(self.get('score_threshold', 0.5)),
+            'score_threshold': str(self.get('score_threshold', DEFAULT_SCORE_THRESHOLD)),
         }
 
     def get_status_summary(self) -> Dict[str, bool]:

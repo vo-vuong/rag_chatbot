@@ -9,6 +9,25 @@ API documentation for the RAG Chatbot backend service.
 - **Version**: `1.0.0`
 - **Content-Type**: `application/json` (except multipart/form-data for upload preview)
 
+### Default Configuration
+
+All retrieval parameters use centralized constants from `config/constants.py`:
+
+| Parameter | Default Value | Description |
+|-----------|---------------|-------------|
+| `DEFAULT_NUM_RETRIEVAL` | `5` | Number of text chunks to retrieve |
+| `DEFAULT_SCORE_THRESHOLD` | `0.7` | Minimum similarity score for text search |
+| `DEFAULT_IMAGE_NUM_RETRIEVAL` | `1` | Number of images to retrieve |
+| `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.6` | Minimum similarity score for image search |
+
+These defaults are used in:
+- Request models (`api/models/requests.py`)
+- Service layer (`api/services/`)
+- Session state (`backend/session_manager.py`)
+- UI components (`ui/`)
+
+To change defaults globally, modify values in `config/constants.py`.
+
 ### Endpoints Summary
 
 | Endpoint | Method | Description |
@@ -73,8 +92,8 @@ Process a chat query and return complete response.
 | `query` | string | Yes | - | User's question |
 | `session_id` | string | Yes | - | Unique session identifier |
 | `mode` | string | No | `"rag"` | `"rag"` or `"llm_only"` |
-| `top_k` | integer | No | `3` | Number of documents to retrieve |
-| `score_threshold` | float | No | `0.5` | Minimum similarity score |
+| `top_k` | integer | No | `5` | Number of documents to retrieve |
+| `score_threshold` | float | No | `0.7` | Minimum similarity score |
 
 #### Example Request
 
@@ -85,8 +104,8 @@ curl -X POST "http://localhost:8000/api/v1/chat/query" \
     "query": "What is machine learning?",
     "session_id": "user-123-session-1",
     "mode": "rag",
-    "top_k": 3,
-    "score_threshold": 0.5
+    "top_k": 5,
+    "score_threshold": 0.7
   }'
 ```
 
@@ -226,8 +245,8 @@ Search the vector database directly without LLM generation.
 |-------|------|----------|---------|-------------|
 | `query` | string | Yes | - | Search query |
 | `collection_type` | string | No | `"text"` | `"text"` or `"image"` |
-| `top_k` | integer | No | `3` | Number of results |
-| `score_threshold` | float | No | `0.5` | Minimum similarity score |
+| `top_k` | integer | No | `5` | Number of results |
+| `score_threshold` | float | No | `0.7` | Minimum similarity score |
 
 #### Example Request (Text Search)
 
@@ -238,7 +257,7 @@ curl -X POST "http://localhost:8000/api/v1/rag/search" \
     "query": "transformer architecture",
     "collection_type": "text",
     "top_k": 5,
-    "score_threshold": 0.6
+    "score_threshold": 0.7
   }'
 ```
 

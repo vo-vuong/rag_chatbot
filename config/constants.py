@@ -96,11 +96,17 @@ ONLINE_LLM = "online_llm"
 
 OPENAI = "OpenAI"
 
-# Default values
+# Default chunk size and overlap
 DEFAULT_CHUNK_SIZE = 200
 DEFAULT_CHUNK_OVERLAP = 20
-DEFAULT_NUM_RETRIEVAL = 3
-DEFAULT_SCORE_THRESHOLD = 0.5
+
+# Text retrieval defaults
+DEFAULT_NUM_RETRIEVAL = 5
+DEFAULT_SCORE_THRESHOLD = 0.7
+
+# Image retrieval defaults
+DEFAULT_IMAGE_NUM_RETRIEVAL = 1
+DEFAULT_IMAGE_SCORE_THRESHOLD = 0.6
 
 # ============================================================
 # DATA SOURCES

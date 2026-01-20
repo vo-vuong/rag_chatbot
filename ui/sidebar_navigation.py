@@ -12,6 +12,8 @@ from backend.session_manager import SessionManager
 from backend.vector_db.qdrant_manager import QdrantManager
 from config.constants import (
     DEFAULT_LLM_MODEL,
+    DEFAULT_NUM_RETRIEVAL,
+    DEFAULT_SCORE_THRESHOLD,
     OPENAI,
     OPENAI_API_KEY,
     OPENAI_DEFAULT_EMBEDDING_MODEL,
@@ -212,7 +214,7 @@ class SidebarNavigation:
             "📊 Documents to Retrieve",
             min_value=1,
             max_value=10,
-            value=self.session_manager.get("number_docs_retrieval", 3),
+            value=self.session_manager.get("number_docs_retrieval", DEFAULT_NUM_RETRIEVAL),
             help="Number of documents to retrieve for each query",
         )
         self.session_manager.set("number_docs_retrieval", num_docs)
@@ -221,7 +223,7 @@ class SidebarNavigation:
             "🎯 Score Threshold",
             min_value=0.0,
             max_value=1.0,
-            value=self.session_manager.get("score_threshold", 0.5),
+            value=self.session_manager.get("score_threshold", DEFAULT_SCORE_THRESHOLD),
             step=0.05,
             help="Minimum similarity score (0.0 = all, 1.0 = perfect match)",
         )

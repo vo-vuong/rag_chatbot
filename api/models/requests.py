@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
+from config.constants import DEFAULT_NUM_RETRIEVAL, DEFAULT_SCORE_THRESHOLD
+
 
 class ChatRequest(BaseModel):
     """Chat request model."""
@@ -13,8 +15,8 @@ class ChatRequest(BaseModel):
     query: str
     session_id: str
     mode: Literal["rag", "llm_only"] = "rag"
-    top_k: int = 3
-    score_threshold: float = 0.5
+    top_k: int = DEFAULT_NUM_RETRIEVAL
+    score_threshold: float = DEFAULT_SCORE_THRESHOLD
 
 
 class RAGSearchRequest(BaseModel):
@@ -22,8 +24,8 @@ class RAGSearchRequest(BaseModel):
 
     query: str
     collection_type: Literal["text", "image"] = "text"
-    top_k: int = 3
-    score_threshold: float = 0.5
+    top_k: int = DEFAULT_NUM_RETRIEVAL
+    score_threshold: float = DEFAULT_SCORE_THRESHOLD
 
 
 class SaveChunkData(BaseModel):

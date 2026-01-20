@@ -11,6 +11,7 @@ from typing import List, Optional
 from backend.llms.llm_strategy import LLMStrategy
 from backend.models import ChunkElement, ImageElement
 from backend.prompts.prompt_builder import PromptBuilder
+from config.constants import DEFAULT_IMAGE_NUM_RETRIEVAL, DEFAULT_IMAGE_SCORE_THRESHOLD
 from api.services.rag_service import RAGService
 from api.services.session_service import SessionService
 
@@ -163,7 +164,9 @@ class ChatService:
         reasoning: str,
     ) -> ChatResponse:
         """Generate response from image collection."""
-        images = self._rag.search_images(query, top_k=1, score_threshold=0.6)
+        images = self._rag.search_images(
+            query, top_k=DEFAULT_IMAGE_NUM_RETRIEVAL, score_threshold=DEFAULT_IMAGE_SCORE_THRESHOLD
+        )
 
         if not images:
             return ChatResponse(

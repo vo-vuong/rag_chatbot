@@ -7,93 +7,12 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
 from api.dependencies import get_upload_service
 from api.models.requests import SaveUploadRequest
-from api.models.responses import SaveUploadResponse, UploadPreviewResponse, UploadResponse
+from api.models.responses import SaveUploadResponse, UploadPreviewResponse
 from api.services.upload_service import UploadService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/upload", tags=["upload"])
-
-
-@router.post("", response_model=UploadResponse)
-async def upload_document(
-    file: UploadFile = File(..., description="Document file (PDF/DOCX/CSV)"),
-    language: str = Form(default="en", description="Document language (en/vi)"),
-    processing_mode: str = Form(default="fast", description="fast or ocr"),
-    csv_columns: Optional[str] = Form(default=None, description="CSV columns"),
-    vision_failure_mode: str = Form(
-        default="graceful", description="graceful/strict/skip"
-    ),
-    upload_service: UploadService = Depends(get_upload_service),
-) -> UploadResponse:
-    """
-    Upload and process a document.
-
-    Accepts PDF, DOCX, or CSV files. Processes document, generates embeddings,
-    and stores chunks in TEXT_COLLECTION_NAME (text) and IMAGE_COLLECTION_NAME (images).
-
-    Args:
-        file: Document file to upload
-        language: Document language for OCR (en or vi)
-        processing_mode: fast (no OCR) or ocr (with OCR)
-        csv_columns: Comma-separated column names for CSV grouping
-        vision_failure_mode: How to handle image captioning failures
-
-    Returns:
-        UploadResponse with processing results
-
-    Raises:
-        HTTPException 400: Invalid file or parameters
-        HTTPException 500: Processing error
-    """
-    try:
-        # Validate parameters
-        if language not in {"en", "vi"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid language: {language}. Must be 'en' or 'vi'",
-            )
-
-        if processing_mode not in {"fast", "ocr"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid processing_mode: {processing_mode}. Must be 'fast' or 'ocr'",
-            )
-
-        if vision_failure_mode not in {"graceful", "strict", "skip"}:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid vision_failure_mode: {vision_failure_mode}",
-            )
-
-        # Sanitize filename for logging (truncate, repr for safety)
-        safe_filename = (file.filename or "unknown")[:100]
-        logger.info(f"Upload request: {safe_filename!r}")
-
-        result = upload_service.process_and_store(
-            file=file,
-            language=language,
-            processing_mode=processing_mode,
-            csv_columns=csv_columns,
-            vision_failure_mode=vision_failure_mode,
-        )
-
-        logger.info(f"Upload success: {result.chunks_count} chunks")
-        return result
-
-    except ValueError as e:
-        logger.warning(f"Upload validation error: {e}")
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except HTTPException:
-        raise
-
-    except Exception as e:
-        logger.error(f"Upload error: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=500,
-            detail="Processing failed. Check server logs for details.",
-        )
 
 
 @router.post("/preview", response_model=UploadPreviewResponse)

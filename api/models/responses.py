@@ -76,18 +76,6 @@ class HealthResponse(BaseModel):
     qdrant_connected: bool
 
 
-class UploadResponse(BaseModel):
-    """Upload response model."""
-
-    status: str  # "success" or "error"
-    file_name: str
-    file_type: str
-    chunks_count: int
-    images_count: int = 0
-    message: str
-    processing_time_seconds: float
-
-
 class PreviewChunk(BaseModel):
     """Chunk data for preview display with metadata."""
 

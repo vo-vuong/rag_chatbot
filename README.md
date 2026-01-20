@@ -135,7 +135,6 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
-- `tests/`: Pytest suite with custom markers (@pytest.mark.integration, @pytest.mark.slow)
 
 ### Design Patterns
 - **Strategy Pattern**: Document processors, embeddings, LLMs

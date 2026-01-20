@@ -56,20 +56,6 @@ class StreamEvent:
 
 
 @dataclass
-class UploadResult:
-    """Upload result from API."""
-
-    success: bool
-    file_name: str = ""
-    file_type: str = ""
-    chunks_count: int = 0
-    images_count: int = 0
-    message: str = ""
-    processing_time: float = 0.0
-    error: Optional[str] = None
-
-
-@dataclass
 class PreviewChunk:
     """Chunk data for preview display with metadata."""
 
@@ -267,89 +253,6 @@ class StreamlitAPIClient:
     def close(self):
         """Close HTTP client."""
         self._client.close()
-
-    def upload_file(
-        self,
-        file_content: bytes,
-        file_name: str,
-        language: str = "en",
-        processing_mode: str = "fast",
-        csv_columns: Optional[str] = None,
-        vision_failure_mode: str = "graceful",
-        timeout: float = 300.0,
-    ) -> UploadResult:
-        """
-        Upload and process a file via API.
-
-        Args:
-            file_content: Raw file bytes
-            file_name: Original filename
-            language: Document language (en/vi)
-            processing_mode: fast or ocr
-            csv_columns: CSV column names (comma-separated)
-            vision_failure_mode: graceful/strict/skip
-            timeout: Request timeout in seconds
-
-        Returns:
-            UploadResult with processing status
-        """
-        try:
-            # Prepare multipart form data
-            files = {"file": (file_name, file_content)}
-            data = {
-                "language": language,
-                "processing_mode": processing_mode,
-                "vision_failure_mode": vision_failure_mode,
-            }
-            if csv_columns:
-                data["csv_columns"] = csv_columns
-
-            # Make request with extended timeout
-            response = self._client.post(
-                f"{self._base_url}/api/v1/upload",
-                files=files,
-                data=data,
-                timeout=timeout,
-            )
-
-            if response.status_code == 200:
-                result = response.json()
-                return UploadResult(
-                    success=True,
-                    file_name=result.get("file_name", file_name),
-                    file_type=result.get("file_type", ""),
-                    chunks_count=result.get("chunks_count", 0),
-                    images_count=result.get("images_count", 0),
-                    message=result.get("message", "Upload successful"),
-                    processing_time=result.get("processing_time_seconds", 0.0),
-                )
-            else:
-                # Try to parse JSON error, fallback to status code
-                try:
-                    error = response.json().get("detail", "Unknown error")
-                except (json.JSONDecodeError, ValueError):
-                    error = f"HTTP {response.status_code}"
-                return UploadResult(
-                    success=False,
-                    file_name=file_name,
-                    error=error,
-                    message=f"Upload failed: {error}",
-                )
-
-        except httpx.TimeoutException:
-            return UploadResult(
-                success=False,
-                file_name=file_name,
-                error="Request timeout",
-                message="Processing took too long. Try a smaller file.",
-            )
-        except httpx.RequestError as e:
-            return UploadResult(
-                success=False,
-                file_name=file_name,
-                error=str(e),
-                message=f"Connection error: {e}",
-            )
 
     def preview_upload(
         self,

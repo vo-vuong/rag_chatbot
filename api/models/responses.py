@@ -19,6 +19,7 @@ class RetrievedChunk(BaseModel):
     source_file: str = "Unknown"
     page_number: Optional[int] = None
     element_type: str = "text"
+    point_id: Optional[str] = None  # Qdrant point ID
 
     @classmethod
     def from_chunk_element(cls, chunk: "ChunkElement") -> "RetrievedChunk":
@@ -31,6 +32,7 @@ class RetrievedChunk(BaseModel):
             source_file=chunk.source_file,
             page_number=chunk.page_number,
             element_type=chunk.element_type,
+            point_id=chunk.point_id,
         )
 
 

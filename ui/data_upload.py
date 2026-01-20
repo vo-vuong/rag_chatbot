@@ -74,13 +74,13 @@ class DataUploadUI:
 
         language_choice = st.radio(
             "Document Language:",
-            [ENGLISH, VIETNAMESE],
+            [VIETNAMESE, ENGLISH],
             index=0,
             horizontal=True,
             help="Select the primary language of your documents",
         )
 
-        lang_code = EN if language_choice == ENGLISH else VI
+        lang_code = VI if language_choice == VIETNAMESE else EN
         self.session_manager.set("language", lang_code)
         st.success(f"✅ Language: **{language_choice}** (`{lang_code}`)")
 

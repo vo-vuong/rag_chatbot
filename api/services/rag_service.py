@@ -64,7 +64,7 @@ class RAGService:
         Search text collection.
 
         Returns:
-            List of ChunkElement objects with content, score, source_file, metadata
+            List of ChunkElement objects with content, score, source_file, metadata, point_id
         """
         query_embedding = self._embedding.embed_query(query)
         results = self._text_manager.search(
@@ -73,7 +73,11 @@ class RAGService:
             score_threshold=score_threshold,
         )
         return [
-            ChunkElement.from_qdrant_payload(r["payload"], r["score"])
+            ChunkElement.from_qdrant_payload(
+                r["payload"],
+                r["score"],
+                point_id=str(r["id"])
+            )
             for r in results
         ]
 

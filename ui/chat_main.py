@@ -298,6 +298,8 @@ class ChatMainUI:
                 st.caption(f"📁 Source: `{chunk.source_file}`")
                 if chunk.page_number:
                     st.caption(f"📄 Page: {chunk.page_number}")
+                if chunk.point_id:
+                    st.caption(f"🔑 Point ID: `{chunk.point_id}`")
                 st.text(chunk.text[:200] + "..." if len(chunk.text) > 200 else chunk.text)
                 st.markdown("---")
 

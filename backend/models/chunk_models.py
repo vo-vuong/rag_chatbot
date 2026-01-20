@@ -25,16 +25,22 @@ class ChunkElement:
     page_number: Optional[int] = None
     element_type: str = "text"  # text, table, list, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
+    point_id: Optional[str] = None  # Qdrant point ID
 
     @classmethod
     def from_qdrant_payload(
-        cls, payload: Dict[str, Any], score: float = 0.0
+        cls, payload: Dict[str, Any], score: float = 0.0, point_id: Optional[str] = None
     ) -> "ChunkElement":
         """Create from Qdrant search result payload.
 
         Handles legacy field names:
         - 'chunk' -> 'content'
         - 'source_file' already standard
+
+        Args:
+            payload: Qdrant payload dictionary
+            score: Similarity score
+            point_id: Qdrant point ID
         """
         return cls(
             content=payload.get("chunk", payload.get("content", "")),
@@ -48,17 +54,21 @@ class ChunkElement:
                 if k
                 not in ("chunk", "content", "source_file", "page_number", "element_type")
             },
+            point_id=point_id,
         )
 
     def to_api_dict(self) -> Dict[str, Any]:
         """Convert to API response format."""
-        return {
+        result = {
             "text": self.content,  # API uses 'text' for backward compat
             "score": self.score,
             "source_file": self.source_file,
             "page_number": self.page_number,
             "element_type": self.element_type,
         }
+        if self.point_id is not None:
+            result["point_id"] = self.point_id
+        return result
 
 
 @dataclass(frozen=True)

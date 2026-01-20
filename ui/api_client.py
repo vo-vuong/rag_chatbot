@@ -23,6 +23,7 @@ class UIChunk:
     source_file: str
     page_number: Optional[int] = None
     element_type: str = "text"
+    point_id: Optional[str] = None
 
 
 @dataclass
@@ -184,6 +185,7 @@ class StreamlitAPIClient:
                     source_file=c.get("source_file", "Unknown"),
                     page_number=c.get("page_number"),
                     element_type=c.get("element_type", "text"),
+                    point_id=c.get("point_id"),
                 )
                 for c in data.get("retrieved_chunks", [])
             ],

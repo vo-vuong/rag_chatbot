@@ -4,7 +4,7 @@ Request Models - Pydantic models for API requests.
 
 from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class ChatRequest(BaseModel):
@@ -24,16 +24,6 @@ class RAGSearchRequest(BaseModel):
     collection_type: Literal["text", "image"] = "text"
     top_k: int = 3
     score_threshold: float = 0.5
-
-
-class UploadConfig(BaseModel):
-    """Upload configuration (form fields)."""
-
-    collection_name: str = Field(..., min_length=1)
-    language: Literal["en", "vi"] = "en"
-    processing_mode: Literal["fast", "ocr"] = "fast"
-    csv_columns: Optional[str] = None  # Comma-separated
-    vision_failure_mode: Literal["graceful", "strict", "skip"] = "graceful"
 
 
 class SaveChunkData(BaseModel):

@@ -6,21 +6,14 @@ and comprehensive progress tracking.
 """
 
 import logging
-import os
-import tempfile
 import time
-import traceback
-import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import pandas as pd
-import pypdf
 import streamlit as st
 
 from backend.chunking.csv_grouping_chunker import CSVGroupingChunker
 from backend.session_manager import SessionManager
-from backend.strategies.csv_strategy import CSVProcessingStrategy
-from backend.vector_db.qdrant_manager import QdrantManager
 from config.constants import (
     CSV_UI_MESSAGES,
     DEFAULT_CSV_CONFIG,
@@ -32,14 +25,7 @@ from config.constants import (
     VI,
     VIETNAMESE,
 )
-from ui.api_client import (
-    PreviewChunk,
-    PreviewImage,
-    PreviewResult,
-    SaveResult,
-    UploadResult,
-    get_api_client,
-)
+from ui.api_client import PreviewResult, get_api_client
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -72,19 +58,10 @@ class DataUploadUI:
             self._display_preview_results()
 
             st.divider()
-            if st.button("💾 Save to Vector Database", type="primary", use_container_width=True):
+            if st.button(
+                "💾 Save to Vector Database", type="primary", use_container_width=True
+            ):
                 self._handle_save_preview_data()
-
-        # Legacy: Save button for old workflow (chunks_df)
-        if (
-            self.session_manager.get("chunks_df") is not None
-            and not self.session_manager.get("chunks_df").empty
-            and not self.session_manager.get("data_saved_success")
-            and not self.session_manager.get("upload_preview_data")
-        ):
-            st.divider()
-            if st.button("💾 Save to Vector Database", type="primary"):
-                self._handle_save_data()
 
     def _render_language_selection(self) -> None:
         """Render language selection for this upload."""
@@ -122,7 +99,7 @@ class DataUploadUI:
             "Upload CSV, PDF, and DOCX files",
             type=["csv", "pdf", "docx"],
             accept_multiple_files=True,
-            help="Upload CSV, PDF, or DOCX files. PDFs support optional OCR."
+            help="Upload CSV, PDF, or DOCX files. PDFs support optional OCR.",
         )
 
         if uploaded_files:
@@ -338,9 +315,7 @@ class DataUploadUI:
             "ocr": "🔍 Uses EasyOCR for scanned documents and image-based PDFs",
         }
 
-        st.info(
-            f"**{PDF_PROCESSING_MODES[mode_choice]}**: {mode_info[mode_choice]}"
-        )
+        st.info(f"**{PDF_PROCESSING_MODES[mode_choice]}**: {mode_info[mode_choice]}")
 
     def _render_csv_column_selection(self, csv_files: List) -> Dict[str, Any]:
         """
@@ -537,60 +512,6 @@ class DataUploadUI:
         except Exception as e:
             st.error(f"Error generating preview: {str(e)}")
 
-    def _process_file_via_api(
-        self,
-        uploaded_file,
-        status_text,
-    ) -> UploadResult:
-        """Process a single file via the upload API.
-
-        Args:
-            uploaded_file: Streamlit UploadedFile object
-            status_text: Streamlit element for status updates
-
-        Returns:
-            UploadResult with processing status
-        """
-        api_client = get_api_client()
-
-        # Get language from session
-        language = self.session_manager.get("language", "en")
-
-        # Get processing mode for PDFs
-        pdf_mode = self.session_manager.get("pdf_processing_mode", "no_ocr")
-        processing_mode = "ocr" if pdf_mode == "ocr" else "fast"
-
-        # Get vision failure mode
-        vision_failure_mode = self.session_manager.get(
-            "caption_failure_mode", "graceful"
-        )
-
-        # Get CSV columns if configured
-        csv_columns = None
-        csv_configs = getattr(st.session_state, "csv_processing_configs", {})
-        if uploaded_file.name in csv_configs:
-            selected_cols = csv_configs[uploaded_file.name].get("selected_columns", [])
-            if selected_cols:
-                csv_columns = ",".join(selected_cols)
-
-        # Read file content
-        file_content = uploaded_file.read()
-        uploaded_file.seek(0)  # Reset for potential reuse
-
-        status_text.info(f"📤 Uploading {uploaded_file.name} to API...")
-
-        # Upload via API
-        result = api_client.upload_file(
-            file_content=file_content,
-            file_name=uploaded_file.name,
-            language=language,
-            processing_mode=processing_mode,
-            csv_columns=csv_columns,
-            vision_failure_mode=vision_failure_mode,
-        )
-
-        return result
-
     def _process_files_for_preview(self, uploaded_files: List) -> None:
         """Process files via preview API and store results for user confirmation.
 
@@ -649,7 +570,9 @@ class DataUploadUI:
                 csv_columns = None
                 csv_configs = getattr(st.session_state, "csv_processing_configs", {})
                 if uploaded_file.name in csv_configs:
-                    selected_cols = csv_configs[uploaded_file.name].get("selected_columns", [])
+                    selected_cols = csv_configs[uploaded_file.name].get(
+                        "selected_columns", []
+                    )
                     if selected_cols:
                         csv_columns = ",".join(selected_cols)
 
@@ -720,7 +643,9 @@ class DataUploadUI:
 
     def _display_preview_results(self) -> None:
         """Display preview results from the preview API call."""
-        preview_data: List[PreviewResult] = self.session_manager.get("upload_preview_data", [])
+        preview_data: List[PreviewResult] = self.session_manager.get(
+            "upload_preview_data", []
+        )
 
         if not preview_data:
             return
@@ -765,9 +690,15 @@ class DataUploadUI:
                     if preview_result.preview_chunks:
                         # Show first few preview chunks
                         display_count = min(5, len(preview_result.preview_chunks))
-                        for idx, chunk in enumerate(preview_result.preview_chunks[:display_count]):
+                        for idx, chunk in enumerate(
+                            preview_result.preview_chunks[:display_count]
+                        ):
                             st.markdown(f"**Chunk {chunk.chunk_index + 1}:**")
-                            preview_text = chunk.text[:500] + "..." if len(chunk.text) > 500 else chunk.text
+                            preview_text = (
+                                chunk.text[:500] + "..."
+                                if len(chunk.text) > 500
+                                else chunk.text
+                            )
                             st.text_area(
                                 f"Content",
                                 preview_text,
@@ -789,15 +720,21 @@ class DataUploadUI:
                             if show_meta:
                                 meta_col1, meta_col2 = st.columns(2)
                                 with meta_col1:
-                                    st.markdown(f"**Processing Strategy:** `{chunk.processing_strategy or 'N/A'}`")
+                                    st.markdown(
+                                        f"**Processing Strategy:** `{chunk.processing_strategy or 'N/A'}`"
+                                    )
                                     st.markdown(f"**Chunk Type:** `{chunk.chunk_type}`")
                                     st.markdown(f"**Source:** `{chunk.source}`")
                                     st.markdown(f"**OCR Used:** `{chunk.ocr_used}`")
                                 with meta_col2:
-                                    st.markdown(f"**Token Count:** `{chunk.token_count or 'N/A'}`")
+                                    st.markdown(
+                                        f"**Token Count:** `{chunk.token_count or 'N/A'}`"
+                                    )
                                     st.markdown(f"**File Type:** `{chunk.file_type}`")
                                     if chunk.headings:
-                                        st.markdown(f"**Headings:** {', '.join(chunk.headings)}")
+                                        st.markdown(
+                                            f"**Headings:** {', '.join(chunk.headings)}"
+                                        )
                                     if chunk.bbox:
                                         st.markdown(f"**BBox:** `{chunk.bbox}`")
 
@@ -811,8 +748,12 @@ class DataUploadUI:
                 # Show images with metadata
                 if image_tab and preview_result.preview_images:
                     with image_tab:
-                        st.markdown(f"**{len(preview_result.preview_images)} image(s) extracted:**")
-                        for img_idx, img in enumerate(preview_result.preview_images[:5]):
+                        st.markdown(
+                            f"**{len(preview_result.preview_images)} image(s) extracted:**"
+                        )
+                        for img_idx, img in enumerate(
+                            preview_result.preview_images[:5]
+                        ):
                             st.markdown(f"**Image {img_idx + 1}:**")
                             col1, col2 = st.columns([1, 2])
                             with col1:
@@ -823,8 +764,14 @@ class DataUploadUI:
                                     except Exception:
                                         st.caption(f"📷 {img.image_path}")
                             with col2:
-                                st.markdown(f"**Caption:** {img.caption[:200]}..." if len(img.caption) > 200 else f"**Caption:** {img.caption}")
-                                st.caption(f"Page: {img.page_number or 'N/A'} | Hash: {img.image_hash[:8]}...")
+                                st.markdown(
+                                    f"**Caption:** {img.caption[:200]}..."
+                                    if len(img.caption) > 200
+                                    else f"**Caption:** {img.caption}"
+                                )
+                                st.caption(
+                                    f"Page: {img.page_number or 'N/A'} | Hash: {img.image_hash[:8]}..."
+                                )
 
                                 # Image metadata toggle (avoid nested expander)
                                 show_img_meta = st.toggle(
@@ -832,14 +779,22 @@ class DataUploadUI:
                                     key=f"img_meta_toggle_{preview_result.file_name}_{img_idx}",
                                 )
                                 if show_img_meta:
-                                    st.markdown(f"**Processing Strategy:** `{img.processing_strategy}`")
+                                    st.markdown(
+                                        f"**Processing Strategy:** `{img.processing_strategy}`"
+                                    )
                                     st.markdown(f"**File Type:** `{img.file_type}`")
                                     st.markdown(f"**Language:** `{img.language}`")
-                                    st.markdown(f"**Caption Cost:** `${img.caption_cost:.4f}`")
+                                    st.markdown(
+                                        f"**Caption Cost:** `${img.caption_cost:.4f}`"
+                                    )
                                     if img.docling_caption:
-                                        st.markdown(f"**Docling Caption:** {img.docling_caption[:100]}...")
+                                        st.markdown(
+                                            f"**Docling Caption:** {img.docling_caption[:100]}..."
+                                        )
                                     if img.surrounding_context:
-                                        st.markdown(f"**Context:** {img.surrounding_context[:100]}...")
+                                        st.markdown(
+                                            f"**Context:** {img.surrounding_context[:100]}..."
+                                        )
                                     if img.image_metadata:
                                         st.markdown("**Image Info:**")
                                         st.json(img.image_metadata)
@@ -849,14 +804,18 @@ class DataUploadUI:
                             st.divider()
 
                         if len(preview_result.preview_images) > 5:
-                            st.info(f"Showing 5 of {len(preview_result.preview_images)} images")
+                            st.info(
+                                f"Showing 5 of {len(preview_result.preview_images)} images"
+                            )
 
     def _handle_save_preview_data(self) -> None:
         """Save preview data to Qdrant via the save API.
 
         This implements the second step of the two-step upload workflow.
         """
-        preview_data: List[PreviewResult] = self.session_manager.get("upload_preview_data", [])
+        preview_data: List[PreviewResult] = self.session_manager.get(
+            "upload_preview_data", []
+        )
 
         if not preview_data:
             st.warning("No preview data to save")
@@ -900,7 +859,9 @@ class DataUploadUI:
                     image_collection = save_result.image_collection
                 else:
                     failed_files += 1
-                    st.error(f"❌ Failed to save {preview_result.file_name}: {save_result.error}")
+                    st.error(
+                        f"❌ Failed to save {preview_result.file_name}: {save_result.error}"
+                    )
 
             # Complete progress
             progress_bar.progress(1.0)
@@ -927,1083 +888,3 @@ class DataUploadUI:
         except Exception as e:
             st.error(f"❌ Save Error: {str(e)}")
             logger.error(f"Save error: {e}", exc_info=True)
-
-    def _process_uploaded_files_via_api(
-        self, uploaded_files: List
-    ) -> None:
-        """Process uploaded files via API with progress tracking.
-
-        Args:
-            uploaded_files: List of uploaded file objects
-        """
-        try:
-            # Initialize progress tracking
-            progress_container = st.container()
-            with progress_container:
-                st.subheader("🔄 Processing & Uploading Files", divider="gray")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                details_text = st.empty()
-
-                # Metrics display
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    chunks_metric = st.empty()
-                with col2:
-                    images_metric = st.empty()
-                with col3:
-                    time_metric = st.empty()
-
-            # Track results
-            results = []
-            total_chunks = 0
-            total_images = 0
-            processed_files = 0
-            failed_files = 0
-            start_time = time.time()
-
-            for i, uploaded_file in enumerate(uploaded_files):
-                file_progress = (i + 1) / len(uploaded_files)
-                progress_bar.progress(file_progress)
-                status_text.markdown(
-                    f"**Processing file {i+1}/{len(uploaded_files)}**: `{uploaded_file.name}`"
-                )
-
-                # Process via API
-                result = self._process_file_via_api(
-                    uploaded_file=uploaded_file,
-                    status_text=details_text,
-                )
-
-                results.append(result)
-
-                if result.success:
-                    processed_files += 1
-                    total_chunks += result.chunks_count
-                    total_images += result.images_count
-                    details_text.success(
-                        f"✅ {result.file_name}: {result.chunks_count} chunks, "
-                        f"{result.images_count} images ({result.processing_time:.1f}s)"
-                    )
-                else:
-                    failed_files += 1
-                    details_text.error(f"❌ {result.file_name}: {result.error}")
-
-                # Update metrics
-                chunks_metric.metric("Total Chunks", total_chunks)
-                images_metric.metric("Total Images", total_images)
-                elapsed = round(time.time() - start_time, 1)
-                time_metric.metric("Elapsed Time", f"{elapsed}s")
-
-            # Complete progress
-            progress_bar.progress(1.0)
-            total_time = round(time.time() - start_time, 2)
-            status_text.markdown("**Processing Complete!**")
-
-            # Brief pause then clear progress
-            time.sleep(1)
-            progress_container.empty()
-
-            # Display final results
-            self._display_api_upload_results(
-                results=results,
-                total_chunks=total_chunks,
-                total_images=total_images,
-                processed_files=processed_files,
-                failed_files=failed_files,
-                total_time=total_time,
-            )
-
-        except Exception as e:
-            st.error(f"❌ Upload Error: {str(e)}")
-            logger.error(f"API upload error: {e}", exc_info=True)
-
-    def _display_api_upload_results(
-        self,
-        results: List,
-        total_chunks: int,
-        total_images: int,
-        processed_files: int,
-        failed_files: int,
-        total_time: float,
-    ) -> None:
-        """Display results from API-based file upload.
-
-        Args:
-            results: List of UploadResult objects
-            total_chunks: Total chunks uploaded
-            total_images: Total images uploaded
-            processed_files: Number of successfully processed files
-            failed_files: Number of failed files
-            total_time: Total processing time in seconds
-        """
-        if processed_files > 0:
-            st.success(
-                f"🎉 Successfully uploaded {processed_files} file(s)!"
-            )
-
-            # Statistics
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Files Processed", f"{processed_files}/{len(results)}")
-            with col2:
-                st.metric("Total Chunks", total_chunks)
-            with col3:
-                st.metric("Total Images", total_images)
-            with col4:
-                st.metric("Processing Time", f"{total_time}s")
-
-            # Mark as saved (API already saved to Qdrant)
-            self.session_manager.set("data_saved_success", True)
-
-        if failed_files > 0:
-            st.warning(f"⚠️ {failed_files} file(s) failed to process")
-
-            # Show failed file details
-            with st.expander("Failed Files Details", expanded=True):
-                for result in results:
-                    if not result.success:
-                        st.error(f"**{result.file_name}**: {result.error}")
-
-    def _process_uploaded_files(self, uploaded_files: List) -> None:
-        """
-        Process uploaded files with enhanced PDF support and progress tracking.
-
-        Args:
-            uploaded_files: List of uploaded file objects
-        """
-        try:
-            # Initialize progress tracking
-            progress_container = st.container()
-            with progress_container:
-                st.subheader("🔄 Processing Files", divider="gray")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                details_text = st.empty()
-
-                # Add cost tracking metrics
-                col1, col2, col3 = st.columns(3)
-                with col1:
-                    cost_metric = st.empty()
-                with col2:
-                    image_metric = st.empty()
-                with col3:
-                    chunk_metric = st.empty()
-
-            all_chunks = []
-            processing_stats = {
-                "total_files": len(uploaded_files),
-                "processed_files": 0,
-                "failed_files": 0,
-                "total_chunks": 0,
-                "total_images": 0,
-                "total_cost": 0.0,
-                "processing_time": 0.0,
-            }
-
-            start_time = time.time()
-
-            for i, uploaded_file in enumerate(uploaded_files):
-                file_extension = uploaded_file.name.split(".")[-1].lower()
-                file_progress = (i + 1) / len(uploaded_files)
-
-                # Update progress
-                progress_bar.progress(file_progress)
-                status_text.markdown(
-                    f"**Processing file {i+1}/{len(uploaded_files)}**: `{uploaded_file.name}`"
-                )
-                details_text.info(f"🔍 Analyzing file type: {file_extension.upper()}")
-
-                try:
-                    if file_extension == "csv":
-                        chunks = self._process_csv_file_enhanced(
-                            uploaded_file, details_text
-                        )
-                        if chunks:
-                            all_chunks.extend(chunks)
-                            processing_stats["processed_files"] += 1
-                            details_text.success(
-                                f"✅ CSV file processed: {len(chunks)} chunks created"
-                            )
-
-                    elif file_extension == "pdf":
-                        chunks, pdf_metadata = self._process_pdf_file(
-                            uploaded_file, details_text
-                        )
-                        if chunks:
-                            all_chunks.extend(chunks)
-                            processing_stats["processed_files"] += 1
-                            processing_stats["total_images"] += pdf_metadata.get(
-                                "image_count", 0
-                            )
-                            processing_stats["total_cost"] += pdf_metadata.get(
-                                "caption_cost", 0.0
-                            )
-
-                            # Store image data for later upload to Qdrant
-                            if "all_image_data" not in processing_stats:
-                                processing_stats["all_image_data"] = []
-                            if pdf_metadata.get("image_data"):
-                                processing_stats["all_image_data"].extend(
-                                    pdf_metadata["image_data"]
-                                )
-
-                            # Update metrics in real-time
-                            cost_metric.metric(
-                                "Caption Cost",
-                                f"${processing_stats['total_cost']:.4f}",
-                                help="Total GPT-4o Mini Vision API cost",
-                            )
-                            image_metric.metric(
-                                "Images",
-                                processing_stats["total_images"],
-                                help="Total images captioned",
-                            )
-                            chunk_metric.metric(
-                                "Chunks", len(all_chunks), help="Total chunks created"
-                            )
-
-                            details_text.success(
-                                f"✅ PDF file processed: {len(chunks)} chunks created"
-                            )
-
-                    elif file_extension == "docx":
-                        chunks, docx_metadata = self._process_docx_file(
-                            uploaded_file, details_text
-                        )
-                        if chunks:
-                            all_chunks.extend(chunks)
-                            processing_stats["processed_files"] += 1
-                            processing_stats["total_images"] += docx_metadata.get(
-                                "image_count", 0
-                            )
-                            processing_stats["total_cost"] += docx_metadata.get(
-                                "caption_cost", 0.0
-                            )
-
-                            # Store image data for later upload to Qdrant
-                            if "all_image_data" not in processing_stats:
-                                processing_stats["all_image_data"] = []
-                            if docx_metadata.get("image_data"):
-                                processing_stats["all_image_data"].extend(
-                                    docx_metadata["image_data"]
-                                )
-
-                            # Update metrics in real-time
-                            cost_metric.metric(
-                                "Caption Cost",
-                                f"${processing_stats['total_cost']:.4f}",
-                                help="Total GPT-4o Mini Vision API cost",
-                            )
-                            image_metric.metric(
-                                "Images",
-                                processing_stats["total_images"],
-                                help="Total images captioned",
-                            )
-                            chunk_metric.metric(
-                                "Chunks", len(all_chunks), help="Total chunks created"
-                            )
-
-                            details_text.success(
-                                f"✅ DOCX file processed: {len(chunks)} chunks created"
-                            )
-
-                    else:
-                        details_text.warning(
-                            f"⚠️ Skipping unsupported file type: {file_extension}"
-                        )
-                        processing_stats["failed_files"] += 1
-
-                except Exception as file_error:
-                    processing_stats["failed_files"] += 1
-                    details_text.error(
-                        f"❌ Error processing {uploaded_file.name}: {str(file_error)}"
-                    )
-                    continue
-
-            # Complete progress
-            processing_stats["processing_time"] = round(time.time() - start_time, 2)
-            processing_stats["total_chunks"] = len(all_chunks)
-
-            progress_bar.progress(1.0)
-            status_text.markdown("**Processing Complete!**")
-
-            # Clear progress container
-            time.sleep(2)
-            progress_container.empty()
-
-            # Display results
-            if all_chunks:
-                self._display_processing_results(all_chunks, processing_stats)
-                self._render_enhanced_chunking_section()
-            else:
-                st.error("❌ No valid content was extracted from the uploaded files")
-
-        except Exception as e:
-            st.error(f"❌ Critical Error: {str(e)}")
-            st.code(traceback.format_exc())
-
-    def _process_csv_file(self, uploaded_file, status_text) -> List[Dict]:
-        """Process a single CSV file."""
-        status_text.info("📊 Reading CSV file...")
-
-        # Reset file pointer to ensure we read from the beginning
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file)
-        chunks = []
-
-        for idx, row in df.iterrows():
-            # Create a chunk for each row
-            chunk_text = " | ".join(
-                [f"{col}: {val}" for col, val in row.items() if pd.notna(val)]
-            )
-
-            chunk = {
-                "chunk": chunk_text,
-                "source_file": uploaded_file.name,
-                "file_type": "CSV",
-                "row_index": idx,
-                "doc_id": str(uuid.uuid4()),
-                "metadata": {
-                    "source_row": idx,
-                    "total_columns": len(df.columns),
-                    "columns": list(df.columns),
-                },
-            }
-            chunks.append(chunk)
-
-        return chunks
-
-    def _process_csv_file_enhanced(self, uploaded_file, status_text) -> List[Dict]:
-        """
-        Process a single CSV file with enhanced column-based chunking.
-
-        Args:
-            uploaded_file: Uploaded CSV file object
-            status_text: Streamlit status text element for updates
-
-        Returns:
-            List of chunk dictionaries
-        """
-        try:
-            status_text.info("🔧 Initializing enhanced CSV processor...")
-
-            # Get CSV configuration from session state
-            csv_configs = getattr(st.session_state, 'csv_processing_configs', {})
-            csv_config = csv_configs.get(uploaded_file.name, {})
-
-            # Use configuration from UI or defaults
-            selected_columns = csv_config.get("selected_columns", [])
-            max_rows_per_chunk = csv_config.get(
-                "max_rows_per_chunk", DEFAULT_CSV_CONFIG["max_rows_per_chunk"]
-            )
-            include_headers = csv_config.get(
-                "include_headers", DEFAULT_CSV_CONFIG["include_headers"]
-            )
-
-            # Create temporary file for processing
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_file:
-                # Reset file pointer before reading
-                uploaded_file.seek(0)
-                temp_file.write(uploaded_file.read())
-                temp_file_path = temp_file.name
-
-            try:
-                strategy_config = {
-                    "max_rows_per_chunk": max_rows_per_chunk,
-                    "include_headers": include_headers,
-                    "encoding": "utf-8",
-                    "delimiter": ",",
-                }
-
-                strategy = CSVProcessingStrategy(config=strategy_config)
-
-                status_text.info(
-                    f"📊 Processing CSV with column grouping:"
-                    f"{selected_columns if selected_columns else 'Row by row'}"
-                )
-
-                # Process CSV with strategy
-                processing_result = strategy.extract_elements(
-                    temp_file_path,
-                    selected_columns=selected_columns,
-                    max_rows_per_chunk=max_rows_per_chunk,
-                    include_headers=include_headers,
-                )
-
-                if not processing_result.success:
-                    status_text.error(
-                        f"❌ CSV processing failed: {processing_result.error_message}"
-                    )
-                    return []
-
-                # Convert processing result elements to chunk format
-                chunks = []
-                for element in processing_result.elements:
-                    chunk = {
-                        "chunk": element.get("text", ""),
-                        "source_file": uploaded_file.name,
-                        "file_type": "CSV",
-                        "doc_id": element.get("metadata", {}).get(
-                            "doc_id", str(uuid.uuid4())
-                        ),
-                        "metadata": {
-                            **element.get("metadata", {}),
-                            "processing_strategy": "enhanced_csv",
-                            "selected_columns": selected_columns,
-                            "max_rows_per_chunk": max_rows_per_chunk,
-                            "include_headers": include_headers,
-                        },
-                    }
-                    chunks.append(chunk)
-
-                # Log processing statistics
-                metadata = processing_result.metadata
-                status_text.success(
-                    f"✅ Enhanced CSV processing complete: {len(chunks)} chunks"
-                    f"from {metadata.get('total_rows', 0)} rows"
-                )
-
-                return chunks
-
-            finally:
-                # Clean up temporary file
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-
-        except Exception as e:
-            status_text.error(
-                f"❌ Enhanced CSV processing failed, trying fallback: {str(e)}"
-            )
-            logger.error(f"Enhanced CSV processing failed: {e}")
-
-            # Fallback to original CSV processing
-            try:
-                status_text.info("🔄 Using fallback CSV processing...")
-                return self._process_csv_file(uploaded_file, status_text)
-            except Exception as fallback_error:
-                status_text.error(
-                    f"❌ Fallback CSV processing also failed: {str(fallback_error)}"
-                )
-                return []
-
-    def _process_pdf_file(self, uploaded_file, status_text) -> tuple:
-        """
-        Process a single PDF file using the session-managed document processor with enhanced progress tracking.
-
-        Returns:
-            Tuple of (chunks, metadata_dict) where metadata_dict contains:
-                - image_count: number of images processed
-                - caption_cost: total caption cost
-                - total_chunks: number of chunks created
-        """
-        try:
-            status_text.info("📄 Step 1/5: Initializing PDF processor...")
-
-            # Check if session manager has PDF processor available
-            if not self.session_manager.is_pdf_processor_available():
-                status_text.warning(
-                    "⚠️ PDF processor not available. Using basic PDF processing."
-                )
-                return self._fallback_pdf_processing(uploaded_file, status_text), {}
-
-            status_text.info("📄 Step 2/5: Parsing PDF structure...")
-
-            # Create temporary file for processing
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-                temp_file_path = temp_file.name  # Assign path first for cleanup
-                temp_file.write(uploaded_file.read())
-
-            try:
-                status_text.info("🔍 Step 3/5: Extracting text and images from PDF...")
-
-                # Process the PDF using session-managed processor
-                result = self.session_manager.process_document_with_session(
-                    temp_file_path,
-                    languages=[self.session_manager.get("language", "en")],
-                    original_filename=uploaded_file.name,
-                    caption_failure_mode=self.session_manager.get(
-                        "caption_failure_mode", "graceful"
-                    ),
-                )
-
-                if result and result.success:
-                    # Check if images were extracted and captioned
-                    image_count = result.metadata.get('total_images', 0)
-                    caption_cost = result.metadata.get('caption_total_cost', 0.0)
-
-                    if image_count > 0:
-                        status_text.info(
-                            f"🖼️ Step 4/5: Captioned {image_count} images "
-                            f"(Cost: ${caption_cost:.4f})"
-                        )
-                    else:
-                        status_text.info("📝 Step 4/5: No images found in PDF")
-
-                    status_text.info(
-                        f"✅ Step 5/5: Creating {len(result.elements)} text chunks..."
-                    )
-
-                    # Convert processing result to chunks
-                    chunks = []
-                    for i, element in enumerate(result.elements):
-                        # Preserve existing metadata from DoclingChunker
-                        elem_metadata = (
-                            element.metadata.copy()
-                            if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
-                            else {}
-                        )
-
-                        # Add/override with process-level metrics
-                        elem_metadata.update({
-                            "processing_strategy": (
-                                result.metrics.strategy_used
-                                if hasattr(result, 'metrics') and result.metrics
-                                else elem_metadata.get("source", "docling")
-                            ),
-                            "ocr_used": (
-                                result.metrics.ocr_used
-                                if hasattr(result, 'metrics') and result.metrics
-                                else False
-                            ),
-                            "total_pages": (
-                                result.metrics.pages_processed
-                                if hasattr(result, 'metrics') and result.metrics
-                                else 0
-                            ),
-                        })
-
-                        chunk = {
-                            "chunk": element.text,
-                            "source_file": uploaded_file.name,
-                            "file_type": "PDF",
-                            "chunk_index": i,
-                            "doc_id": str(uuid.uuid4()),
-                            "metadata": elem_metadata,
-                        }
-                        chunks.append(chunk)
-
-                    # Display final summary
-                    total_pages = (
-                        result.metrics.pages_processed
-                        if hasattr(result, 'metrics') and result.metrics
-                        else 0
-                    )
-                    status_text.success(
-                        f"✅ PDF processing complete! Created {len(chunks)} chunks "
-                        f"from {total_pages} pages. "
-                        f"Images: {image_count}, Caption cost: ${caption_cost:.4f}"
-                    )
-
-                    # Return chunks, metadata, and image data for Qdrant upload
-                    metadata = {
-                        "image_count": image_count,
-                        "caption_cost": caption_cost,
-                        "total_chunks": len(chunks),
-                        "image_data": (
-                            result.image_data if hasattr(result, 'image_data') else []
-                        ),
-                    }
-                    return chunks, metadata
-
-                else:
-                    error_msg = result.error_message if result else "Unknown error"
-                    status_text.error(f"❌ PDF processing failed: {error_msg}")
-                    return [], {}
-
-            finally:
-                # Clean up temporary file
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-
-        except Exception as e:
-            status_text.error(f"❌ PDF processing error: {str(e)}")
-            logger.error(
-                f"PDF processing error for {uploaded_file.name}: {e}", exc_info=True
-            )
-            return [], {}
-
-    def _fallback_pdf_processing(self, uploaded_file, status_text) -> List[Dict]:
-        """Fallback PDF processing using basic libraries."""
-        status_text.info("🔄 Attempting fallback PDF processing...")
-
-        try:
-            # Read PDF content
-            pdf_reader = pypdf.PdfReader(uploaded_file)
-            text_content = ""
-
-            for page_num, page in enumerate(pdf_reader.pages):
-                page_text = page.extract_text()
-                if page_text.strip():
-                    text_content += f"\n\n--- Page {page_num + 1} ---\n{page_text}"
-
-            if text_content.strip():
-                chunks = [
-                    {
-                        "chunk": text_content.strip(),
-                        "source_file": uploaded_file.name,
-                        "file_type": "PDF",
-                        "chunk_index": 0,
-                        "doc_id": str(uuid.uuid4()),
-                        "metadata": {
-                            "processing_strategy": "fallback_pypdf2",
-                            "ocr_used": False,
-                            "total_pages": len(pdf_reader.pages),
-                            "chunk_type": "fallback_extraction",
-                        },
-                    }
-                ]
-                return chunks
-            else:
-                status_text.warning("⚠️ No text content found in PDF")
-                return []
-
-        except Exception as e:
-            status_text.error(f"❌ Fallback processing failed: {str(e)}")
-            return []
-
-    def _process_docx_file(self, uploaded_file, status_text) -> tuple:
-        """Process a single DOCX file using the session-managed document processor.
-
-        Uses same pipeline as PDF but without OCR options.
-
-        Args:
-            uploaded_file: Uploaded DOCX file object
-            status_text: Streamlit status text element for updates
-
-        Returns:
-            Tuple of (chunks, metadata_dict) where metadata_dict contains:
-                - image_count: number of images processed
-                - caption_cost: total caption cost
-                - total_chunks: number of chunks created
-                - image_data: list of image data for Qdrant upload
-        """
-        try:
-            status_text.info("📝 Step 1/4: Initializing DOCX processor...")
-
-            # Check if session manager has document processor available
-            if not self.session_manager.is_pdf_processor_available():
-                status_text.error(
-                    "❌ Document processor not available. Cannot process DOCX files."
-                )
-                return [], {}
-
-            status_text.info("📝 Step 2/4: Parsing DOCX structure...")
-
-            # Create temporary file for processing
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as temp_file:
-                temp_file_path = temp_file.name  # Assign path first for cleanup
-                temp_file.write(uploaded_file.read())
-
-            try:
-                status_text.info("🔍 Step 3/4: Extracting text and images from DOCX...")
-
-                # Process the DOCX using session-managed processor
-                result = self.session_manager.process_document_with_session(
-                    temp_file_path,
-                    languages=[self.session_manager.get("language", "en")],
-                    original_filename=uploaded_file.name,
-                    caption_failure_mode=self.session_manager.get(
-                        "caption_failure_mode", "graceful"
-                    ),
-                )
-
-                if result and result.success:
-                    # Check if images were extracted and captioned
-                    image_count = result.metadata.get('total_images', 0)
-                    caption_cost = result.metadata.get('caption_total_cost', 0.0)
-
-                    if image_count > 0:
-                        status_text.info(
-                            f"🖼️ Captioned {image_count} images "
-                            f"(Cost: ${caption_cost:.4f})"
-                        )
-
-                    status_text.info(
-                        f"✅ Step 4/4: Creating {len(result.elements)} text chunks..."
-                    )
-
-                    # Convert processing result to chunks
-                    chunks = []
-                    for i, element in enumerate(result.elements):
-                        # Preserve existing metadata from DoclingChunker
-                        elem_metadata = (
-                            element.metadata.copy()
-                            if hasattr(element, 'metadata') and isinstance(element.metadata, dict)
-                            else {}
-                        )
-
-                        # Add/override with process-level metrics
-                        elem_metadata.update({
-                            "processing_strategy": (
-                                result.metrics.strategy_used
-                                if hasattr(result, 'metrics') and result.metrics
-                                else elem_metadata.get("source", "docling")
-                            ),
-                            "ocr_used": False,  # DOCX never uses OCR
-                        })
-
-                        chunk = {
-                            "chunk": element.text,
-                            "source_file": uploaded_file.name,
-                            "file_type": "DOCX",
-                            "chunk_index": i,
-                            "doc_id": str(uuid.uuid4()),
-                            "metadata": elem_metadata,
-                        }
-                        chunks.append(chunk)
-
-                    status_text.success(
-                        f"✅ DOCX processing complete! Created {len(chunks)} chunks. "
-                        f"Images: {image_count}, Caption cost: ${caption_cost:.4f}"
-                    )
-
-                    # Return chunks, metadata, and image data for Qdrant upload
-                    metadata = {
-                        "image_count": image_count,
-                        "caption_cost": caption_cost,
-                        "total_chunks": len(chunks),
-                        "image_data": (
-                            result.image_data if hasattr(result, 'image_data') else []
-                        ),
-                    }
-                    return chunks, metadata
-
-                else:
-                    error_msg = result.error_message if result else "Unknown error"
-                    status_text.error(f"❌ DOCX processing failed: {error_msg}")
-                    return [], {}
-
-            finally:
-                # Clean up temporary file
-                if os.path.exists(temp_file_path):
-                    os.unlink(temp_file_path)
-
-        except Exception as e:
-            status_text.error(f"❌ DOCX processing error: {str(e)}")
-            logger.error(
-                f"DOCX processing error for {uploaded_file.name}: {e}", exc_info=True
-            )
-            return [], {}
-
-    def _display_processing_results(self, chunks: List[Dict], stats: Dict) -> None:
-        """Display processing results and statistics."""
-        st.success("🎉 Files processed successfully!")
-
-        # Statistics
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric(
-                "Files Processed",
-                f"{stats['processed_files']}/{stats['total_files']}",
-            )
-        with col2:
-            st.metric("Total Chunks", stats["total_chunks"])
-        with col3:
-            st.metric("Failed Files", stats["failed_files"])
-        with col4:
-            st.metric("Processing Time", f"{stats['processing_time']}s")
-
-        # Create DataFrame for chunks
-        chunks_df = pd.DataFrame(chunks)
-        self.session_manager.set("chunks_df", chunks_df)
-
-        # Store image data for Qdrant upload
-        if stats.get("all_image_data"):
-            self.session_manager.set("pending_image_data", stats["all_image_data"])
-            logger.info(f"Stored {len(stats['all_image_data'])} images for upload")
-
-        # Display sample chunks
-        if len(chunks_df) > 0:
-            st.subheader("📝 Extracted Content Preview", divider="gray")
-
-            # Show first few chunks
-            display_count = min(5, len(chunks_df))
-            for idx, (i, chunk_row) in enumerate(
-                chunks_df.head(display_count).iterrows()
-            ):
-                with st.expander(
-                    f"Chunk {idx+1} - {chunk_row['source_file']}",
-                    expanded=idx == 0,
-                ):
-                    st.write("**Source:**", chunk_row["source_file"])
-                    st.write("**Type:**", chunk_row["file_type"])
-                    st.write("**Content Preview:**")
-                    st.text_area(
-                        "Content",
-                        (
-                            chunk_row["chunk"][:500] + "..."
-                            if len(chunk_row["chunk"]) > 500
-                            else chunk_row["chunk"]
-                        ),
-                        height=150,
-                        disabled=True,
-                        label_visibility="collapsed",
-                        key=f"chunk_content_{i}",
-                    )
-                    if "metadata" in chunk_row:
-                        st.write("**Metadata:**")
-                        st.json(chunk_row["metadata"])
-
-            if len(chunks_df) > display_count:
-                st.info(
-                    f"📊 Showing first {display_count} of {len(chunks_df)} total chunks"
-                )
-
-    def _render_enhanced_chunking_section(self) -> None:
-        """Render enhanced chunking configuration section."""
-        chunks_df = self.session_manager.get("chunks_df")
-
-        if chunks_df is None or chunks_df.empty:
-            st.warning("No chunks available for further processing")
-            return
-
-    def _handle_save_data(self) -> None:
-        """Save enhanced chunks data to Qdrant."""
-        chunks_df = self.session_manager.get("chunks_df")
-
-        if chunks_df is None or chunks_df.empty:
-            st.warning("No data to save")
-            return
-
-        embedding_strategy = self.session_manager.get("embedding_strategy")
-        if not embedding_strategy:
-            st.error("❌ Embeddings not configured")
-            return
-
-        language = self.session_manager.get("language")
-        if not language:
-            st.error("❌ Language not selected")
-            return
-
-        try:
-            # Enhanced save progress tracking
-            progress_container = st.container()
-            with progress_container:
-                st.subheader("💾 Saving to Vector Database", divider="gray")
-                progress_bar = st.progress(0)
-                status_text = st.empty()
-                details_text = st.empty()
-
-            total_chunks = len(chunks_df)
-
-            # Step 1: Connect to Qdrant
-            progress_bar.progress(0.1)
-            status_text.markdown("**Step 1/5: Connecting to Qdrant...**")
-            details_text.info("🔄 Initializing vector database connection...")
-
-            qdrant_manager = QdrantManager()
-
-            if not qdrant_manager.is_healthy():
-                progress_container.empty()
-                st.error(
-                    "❌ Qdrant not running. Start with:\n"
-                    "```bash\ndocker-compose up -d\n```"
-                )
-                return
-
-            details_text.success("✅ Connected to Qdrant successfully")
-
-            # Step 2: Setup Collection
-            progress_bar.progress(0.2)
-            status_text.markdown("**Step 2/5: Setting up collection...**")
-            details_text.info("🔄 Creating/verifying vector collection...")
-
-            dimension = self.session_manager.get("embedding_dimension")
-
-            if not qdrant_manager.ensure_collection(dimension):
-                progress_container.empty()
-                st.error("❌ Failed to create collection")
-                return
-
-            details_text.success(
-                f"✅ Collection '{qdrant_manager.collection_name}' ready"
-            )
-
-            # Step 3: Generate Embeddings
-            progress_bar.progress(0.3)
-            status_text.markdown("**Step 3/5: Generating embeddings...**")
-            details_text.info(f"🔄 Processing {total_chunks} chunks...")
-
-            chunks = chunks_df["chunk"].tolist()
-
-            # Embeddings with progress
-            try:
-                embeddings = embedding_strategy.embed_texts(chunks)
-                details_text.success(f"✅ Generated {len(embeddings)} embeddings")
-            except Exception as e:
-                progress_container.empty()
-                st.error(f"❌ Embedding error: {str(e)}")
-                return
-
-            # Step 4: Prepare Enhanced Metadata
-            progress_bar.progress(0.6)
-            status_text.markdown("**Step 4/5: Preparing enhanced metadata...**")
-            details_text.info("🔄 Processing document metadata...")
-
-            # Enhanced source file tracking
-            source_files = (
-                chunks_df["source_file"].unique()
-                if "source_file" in chunks_df.columns
-                else ["uploaded_files"]
-            )
-            file_types = (
-                chunks_df["file_type"].value_counts().to_dict()
-                if "file_type" in chunks_df.columns
-                else {}
-            )
-
-            # Create enhanced source description
-            source_description = f"uploaded_{len(source_files)}_files"
-            if file_types:
-                type_descriptions = [
-                    f"{count}_{file_type.lower()}"
-                    for file_type, count in file_types.items()
-                ]
-                source_description = "_".join(type_descriptions)
-
-            details_text.success(
-                f"✅ Metadata prepared for {len(source_files)} source files"
-            )
-
-            # Step 5: Upload to Database
-            progress_bar.progress(0.8)
-            status_text.markdown("**Step 5/5: Uploading to database...**")
-            details_text.info(f"🔄 Storing {total_chunks} document vectors...")
-
-            success = qdrant_manager.add_documents(
-                chunks_df=chunks_df,
-                embeddings=embeddings,
-                language=language,
-                source_file=source_description,
-            )
-
-            if not success:
-                progress_container.empty()
-                st.error("❌ Upload failed")
-                return
-
-            details_text.success(
-                f"✅ Uploaded {total_chunks} text chunks to '{qdrant_manager.collection_name}'"
-            )
-
-            # Step 5.5: Upload images to image collection (if any)
-            pending_images = self.session_manager.get("pending_image_data", [])
-            images_uploaded = 0
-
-            if pending_images:
-                try:
-                    details_text.info(
-                        f"🖼️ Uploading {len(pending_images)} image captions..."
-                    )
-
-                    # Use DocumentProcessor's upload_to_qdrant method
-                    from backend.strategies.results import ProcessingResult
-
-                    # Create a minimal ProcessingResult with image data
-                    result = ProcessingResult(
-                        success=True,
-                        elements=[],  # No text elements for image-only upload
-                        image_data=pending_images,
-                    )
-
-                    # Get document processor from session
-                    doc_processor = self.session_manager.get('document_processor')
-                    if not doc_processor:
-                        doc_processor = (
-                            self.session_manager.initialize_document_processor()
-                        )
-
-                    if doc_processor:
-                        # Upload images using document processor
-                        upload_result = doc_processor.upload_to_qdrant(
-                            processing_result=result,
-                            embeddings=[],  # No text embeddings
-                            source_file=source_description,
-                        )
-
-                        images_uploaded = upload_result.get("images", 0)
-
-                        if images_uploaded > 0:
-                            details_text.success(
-                                f"✅ Uploaded {images_uploaded} image captions to 'rag_chatbot_images'"
-                            )
-                        # Clear pending images
-                        self.session_manager.set("pending_image_data", [])
-                    else:
-                        logger.warning(
-                            "Document processor not available for image upload"
-                        )
-
-                except Exception as img_error:
-                    logger.error(f"Failed to upload images: {img_error}")
-                    details_text.warning(
-                        f"⚠️ Text chunks uploaded successfully, but image upload failed: {str(img_error)}"
-                    )
-
-            # Complete progress
-            progress_bar.progress(1.0)
-            status_text.markdown("**Save Complete!**")
-
-            if images_uploaded > 0:
-                details_text.success(
-                    f"✅ All data saved: {total_chunks} text chunks + {images_uploaded} images"
-                )
-            else:
-                details_text.success("✅ All documents saved to vector database")
-
-            # Save to session with enhanced information
-            self.session_manager.update(
-                {
-                    "qdrant_manager": qdrant_manager,
-                    "collection_name": qdrant_manager.collection_name,
-                    "data_saved_success": True,
-                    "source_data": "UPLOAD",
-                    "uploaded_file_types": file_types,
-                    "last_upload_stats": {
-                        "total_chunks": total_chunks,
-                        "source_files_count": len(source_files),
-                        "file_types": file_types,
-                        "language": language,
-                    },
-                }
-            )
-
-            # Clear progress and show success
-            time.sleep(2)
-            progress_container.empty()
-
-            st.success("🎉 Data saved successfully!")
-
-            # Enhanced statistics display
-            stats = qdrant_manager.get_statistics()
-
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Documents", stats.get("total_documents", 0))
-            with col2:
-                st.metric("Collection", qdrant_manager.collection_name)
-            with col3:
-                st.metric("Language Saved", language.upper())
-            with col4:
-                st.metric("Chunks Uploaded", total_chunks)
-
-            # File type breakdown
-            if file_types:
-                st.subheader("📄 File Type Breakdown", divider="gray")
-                type_cols = st.columns(len(file_types))
-                for i, (file_type, count) in enumerate(file_types.items()):
-                    with type_cols[i]:
-                        st.metric(f"{file_type} Files", count)
-
-            # Success message with processing details
-            files_info = self.session_manager.get("uploaded_files_info", [])
-            if files_info:
-                st.info(
-                    f"📊 Successfully processed and saved content from "
-                    f"{len(files_info)} uploaded files"
-                )
-
-        except Exception as e:
-            st.error(f"❌ Save Error: {str(e)}")
-            st.code(traceback.format_exc())

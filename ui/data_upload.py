@@ -22,6 +22,8 @@ from config.constants import (
     PDF_PROCESSING_MODES,
     PDF_SIZE_LIMIT_MB,
     PDF_SIZE_WARNING_MB,
+    PREVIEW_INITIAL_DISPLAY_COUNT,
+    PREVIEW_LOAD_MORE_COUNT,
     VI,
     VIETNAMESE,
 )
@@ -533,13 +535,11 @@ class DataUploadUI:
                 status_text = st.empty()
                 details_text = st.empty()
 
-                col1, col2, col3 = st.columns(3)
+                col1, col2 = st.columns(2)
                 with col1:
                     chunks_metric = st.empty()
                 with col2:
                     images_metric = st.empty()
-                with col3:
-                    time_metric = st.empty()
 
             api_client = get_api_client()
 
@@ -557,7 +557,6 @@ class DataUploadUI:
             total_images = 0
             processed_files = 0
             failed_files = 0
-            start_time = time.time()
 
             for i, uploaded_file in enumerate(uploaded_files):
                 file_progress = (i + 1) / len(uploaded_files)
@@ -608,12 +607,9 @@ class DataUploadUI:
                 # Update metrics
                 chunks_metric.metric("Total Chunks", total_chunks)
                 images_metric.metric("Total Images", total_images)
-                elapsed = round(time.time() - start_time, 1)
-                time_metric.metric("Elapsed Time", f"{elapsed}s")
 
             # Complete progress
             progress_bar.progress(1.0)
-            total_time = round(time.time() - start_time, 2)
             status_text.markdown("**Processing Complete!**")
 
             # Brief pause then clear progress
@@ -688,8 +684,16 @@ class DataUploadUI:
 
                 with chunk_tab:
                     if preview_result.preview_chunks:
-                        # Show first few preview chunks
-                        display_count = min(5, len(preview_result.preview_chunks))
+                        # Initialize session state for chunks display count
+                        chunks_key = f"chunks_display_{preview_result.file_name}"
+                        if chunks_key not in st.session_state:
+                            st.session_state[chunks_key] = PREVIEW_INITIAL_DISPLAY_COUNT
+
+                        display_count = min(
+                            st.session_state[chunks_key],
+                            len(preview_result.preview_chunks),
+                        )
+
                         for idx, chunk in enumerate(
                             preview_result.preview_chunks[:display_count]
                         ):
@@ -740,19 +744,44 @@ class DataUploadUI:
 
                             st.divider()
 
+                        # Show count and "Show More" button if there are more chunks
                         if len(preview_result.preview_chunks) > display_count:
-                            st.info(
-                                f"Showing {display_count} of {len(preview_result.preview_chunks)} preview chunks"
+                            remaining = (
+                                len(preview_result.preview_chunks) - display_count
                             )
+                            st.info(
+                                f"Showing {display_count} of {len(preview_result.preview_chunks)} preview chunks "
+                                f"({remaining} more available)"
+                            )
+                            if st.button(
+                                f"📄 Show {PREVIEW_LOAD_MORE_COUNT} More Chunks",
+                                key=f"show_more_chunks_{preview_result.file_name}",
+                                use_container_width=True,
+                            ):
+                                st.session_state[chunks_key] += PREVIEW_LOAD_MORE_COUNT
+                                st.rerun()
+                        else:
+                            st.success(f"✅ Showing all {display_count} preview chunks")
 
                 # Show images with metadata
                 if image_tab and preview_result.preview_images:
                     with image_tab:
+                        # Initialize session state for images display count
+                        images_key = f"images_display_{preview_result.file_name}"
+                        if images_key not in st.session_state:
+                            st.session_state[images_key] = PREVIEW_INITIAL_DISPLAY_COUNT
+
+                        display_count = min(
+                            st.session_state[images_key],
+                            len(preview_result.preview_images),
+                        )
+
                         st.markdown(
                             f"**{len(preview_result.preview_images)} image(s) extracted:**"
                         )
+
                         for img_idx, img in enumerate(
-                            preview_result.preview_images[:5]
+                            preview_result.preview_images[:display_count]
                         ):
                             st.markdown(f"**Image {img_idx + 1}:**")
                             col1, col2 = st.columns([1, 2])
@@ -803,10 +832,24 @@ class DataUploadUI:
 
                             st.divider()
 
-                        if len(preview_result.preview_images) > 5:
-                            st.info(
-                                f"Showing 5 of {len(preview_result.preview_images)} images"
+                        # Show count and "Show More" button if there are more images
+                        if len(preview_result.preview_images) > display_count:
+                            remaining = (
+                                len(preview_result.preview_images) - display_count
                             )
+                            st.info(
+                                f"Showing {display_count} of {len(preview_result.preview_images)} images "
+                                f"({remaining} more available)"
+                            )
+                            if st.button(
+                                f"🖼️ Show {PREVIEW_LOAD_MORE_COUNT} More Images",
+                                key=f"show_more_images_{preview_result.file_name}",
+                                use_container_width=True,
+                            ):
+                                st.session_state[images_key] += PREVIEW_LOAD_MORE_COUNT
+                                st.rerun()
+                        else:
+                            st.success(f"✅ Showing all {display_count} images")
 
     def _handle_save_preview_data(self) -> None:
         """Save preview data to Qdrant via the save API.

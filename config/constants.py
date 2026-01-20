@@ -148,6 +148,15 @@ MSG_DATA_SAVED_SUCCESS = "Data saved successfully!"
 MSG_EXPORT_SUCCESS = "Chatbot exported successfully!"
 
 # ============================================================
+# PREVIEW PAGINATION SETTINGS
+# ============================================================
+# Number of chunks/images to display initially in preview
+PREVIEW_INITIAL_DISPLAY_COUNT = 5
+
+# Number of chunks/images to load when "Show More" is clicked
+PREVIEW_LOAD_MORE_COUNT = 5
+
+# ============================================================
 # PAGE NAVIGATION
 # ============================================================
 PAGE_CHAT = "chat"

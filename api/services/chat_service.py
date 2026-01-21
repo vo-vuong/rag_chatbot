@@ -180,9 +180,6 @@ class ChatService:
         img = images[0]
         context = PromptBuilder.format_image_context(
             image_caption=img.content,  # Was img.caption
-            page_number=img.page_number,
-            source_document=img.source_file,  # Was img.source_document
-            score=img.score,
         )
 
         history = self._sessions.get_chat_history(session_id)

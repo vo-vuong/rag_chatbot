@@ -61,7 +61,7 @@ class PromptBuilder:
                 raise ValueError(
                     f"Cannot build RAG prompt: {e}. "
                     "Ensure config/prompts.yaml exists and contains RAG templates."
-                )
+                ) from e
 
         # Build variables for template
         variables = {'query': query, 'context': context, **kwargs}
@@ -74,7 +74,7 @@ class PromptBuilder:
             raise ValueError(
                 f"Failed to render RAG template '{template.name}': {e}. "
                 f"Required variables: {template.variables}"
-            )
+            ) from e
 
     @staticmethod
     def build_chat_prompt(
@@ -128,7 +128,7 @@ class PromptBuilder:
                 raise ValueError(
                     f"Cannot build chat prompt: {e}. "
                     "Ensure config/prompts.yaml exists and contains chat templates."
-                )
+                ) from e
 
         # Build variables for template
         variables = {'query': query, 'chat_history': history_str, **kwargs}
@@ -141,54 +141,7 @@ class PromptBuilder:
             raise ValueError(
                 f"Failed to render chat template '{template.name}': {e}. "
                 f"Required variables: {template.variables}"
-            )
-
-    @staticmethod
-    def build_system_prompt(template: Optional[PromptTemplate] = None, **kwargs) -> str:
-        """
-        Build a system prompt.
-
-        Uses templates from config/prompts.yaml only.
-        If no template provided, loads 'system_helpful_assistant' from YAML.
-
-        Args:
-            template: PromptTemplate for system message (loads from YAML if None)
-            **kwargs: Variables for template
-
-        Returns:
-            Rendered system prompt
-
-        Raises:
-            ValueError: If template not found and PromptManager unavailable
-        """
-        # Get template from YAML if not provided
-        if template is None:
-            try:
-                manager = PromptManager()
-                template = manager.get_template('system_helpful_assistant')
-
-                if template is None:
-                    raise ValueError(
-                        "System template not found in prompts.yaml. "
-                        "Please ensure 'system_helpful_assistant' template exists."
-                    )
-
-            except Exception as e:
-                logger.error(f"Failed to load system template from YAML: {e}")
-                raise ValueError(
-                    f"Cannot build system prompt: {e}. "
-                    "Ensure config/prompts.yaml exists and contains system templates."
-                )
-
-        # Render template
-        try:
-            return template.render(**kwargs)
-        except Exception as e:
-            logger.error(f"Error rendering system template: {e}")
-            raise ValueError(
-                f"Failed to render system template '{template.name}': {e}. "
-                f"Required variables: {template.variables}"
-            )
+            ) from e
 
     @staticmethod
     def format_context(
@@ -233,9 +186,6 @@ class PromptBuilder:
     @staticmethod
     def format_image_context(
         image_caption: str,
-        page_number: Optional[int] = None,
-        source_document: Optional[str] = None,
-        score: Optional[float] = None,
         template: Optional[PromptTemplate] = None,
     ) -> str:
         """
@@ -243,9 +193,6 @@ class PromptBuilder:
 
         Args:
             image_caption: Caption/description of the image
-            page_number: Page number (unused in simple template)
-            source_document: Source document name (unused in simple template)
-            score: Optional similarity score (unused in simple template)
             template: Optional PromptTemplate (loads 'rag_image_context' if None)
 
         Returns:
@@ -262,7 +209,9 @@ class PromptBuilder:
 
                 if template is None:
                     # Fallback to simple format
-                    logger.warning("rag_image_context template not found, using fallback")
+                    logger.warning(
+                        "rag_image_context template not found, using fallback"
+                    )
                     return f"Relevant Image Description:\n{image_caption}"
 
             except Exception as e:
@@ -335,12 +284,16 @@ class PromptBuilder:
                 combined_context = text_context
                 if image_context:
                     combined_context += f"\n\n{image_context}"
-                return PromptBuilder.build_rag_prompt(query=query, context=combined_context)
+                return PromptBuilder.build_rag_prompt(
+                    query=query, context=combined_context
+                )
 
         # Build variables for template
         variables = {
             'query': query,
-            'text_context': text_context if text_context else "No text context available.",
+            'text_context': (
+                text_context if text_context else "No text context available."
+            ),
             'image_context': image_context if image_context else "",
             'chat_history': history_str if history_str else "No previous conversation.",
         }
@@ -353,7 +306,7 @@ class PromptBuilder:
             raise ValueError(
                 f"Failed to render image RAG template '{template.name}': {e}. "
                 f"Required variables: {template.variables}"
-            )
+            ) from e
 
     @staticmethod
     def format_chat_history(
@@ -392,86 +345,3 @@ class PromptBuilder:
             formatted_messages.append(f"{role}: {content}")
 
         return "\n\n".join(formatted_messages)
-
-    @staticmethod
-    def build_error_prompt(
-        query: str,
-        error_type: str = "no_results",
-        template: Optional[PromptTemplate] = None,
-        **kwargs,
-    ) -> str:
-        """
-        Build an error/fallback prompt.
-
-        Uses templates from config/prompts.yaml only.
-        If no template provided, loads appropriate error template from YAML.
-
-        Args:
-            query: User's question
-            error_type: Type of error (no_results, retrieval_failed, llm_failed)
-            template: Optional PromptTemplate (loads from YAML if None)
-            **kwargs: Additional variables (e.g., error_message, context)
-
-        Returns:
-            Rendered error message
-
-        Raises:
-            ValueError: If template not found and PromptManager unavailable
-        """
-        # Get template from YAML if not provided
-        if template is None:
-            try:
-                manager = PromptManager()
-
-                # Map error type to template name
-                template_map = {
-                    'no_results': 'error_no_results',
-                    'retrieval_failed': 'error_retrieval_failed',
-                    'llm_failed': 'error_llm_failed',
-                }
-
-                template_name = template_map.get(error_type, 'error_no_results')
-                template = manager.get_template(template_name)
-
-                if template is None:
-                    raise ValueError(
-                        f"Error template '{template_name}' not found in prompts.yaml. "
-                        "Please ensure error templates exist."
-                    )
-
-            except Exception as e:
-                logger.error(f"Failed to load error template from YAML: {e}")
-                raise ValueError(
-                    f"Cannot build error prompt: {e}. "
-                    "Ensure config/prompts.yaml exists and contains error templates."
-                )
-
-        # Build variables for template
-        variables = {'query': query, 'error_type': error_type, **kwargs}
-
-        # Render template
-        try:
-            return template.render(**variables)
-        except Exception as e:
-            logger.error(f"Error rendering error template: {e}")
-            raise ValueError(
-                f"Failed to render error template '{template.name}': {e}. "
-                f"Required variables: {template.variables}"
-            )
-
-    @staticmethod
-    def truncate_text(text: str, max_length: int = 500, suffix: str = "...") -> str:
-        """
-        Truncate text to maximum length.
-
-        Args:
-            text: Text to truncate
-            max_length: Maximum length
-            suffix: Suffix to add if truncated
-
-        Returns:
-            Truncated text
-        """
-        if len(text) <= max_length:
-            return text
-        return text[: max_length - len(suffix)] + suffix

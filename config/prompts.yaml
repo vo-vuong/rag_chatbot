@@ -216,21 +216,3 @@ prompts:
     variables: []
     metadata:
       version: "1.0"
-
-  # ============================================================
-  # ERROR / FALLBACK PROMPTS
-  # ============================================================
-
-  - name: "error_retrieval_failed"
-    category: "error"
-    description: "Message when document retrieval fails"
-    language: "multi"
-    template: |
-      I encountered an error while searching the documents for: {query}
-
-      Error: {error_message}
-
-      Please try again or contact support if the problem persists.
-    variables: ["query", "error_message"]
-    metadata:
-      version: "1.0"

@@ -10,7 +10,7 @@ import pandas as pd
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 
-from config.constants import TEXT_COLLECTION_NAME, QDRANT_HOST, QDRANT_PORT
+from config.constants import QDRANT_HOST, QDRANT_PORT, TEXT_COLLECTION_NAME
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -211,15 +211,15 @@ class QdrantManager:
                 point_id = next_id + idx
 
                 # Simple metadata (no session_id)
-                # Use chunk_index from DataFrame if exists, otherwise use loop index
-                chunk_index = row.get("chunk_index", idx)
+                # Use document_chunk_index from DataFrame if exists, otherwise use loop index
+                document_chunk_index = row.get("document_chunk_index", idx)
                 payload = {
                     "chunk": row.get("chunk", ""),
                     "source_file": row.get(
                         "source_file", source_file
                     ),  # Use individual chunk source_file, fallback to parameter
                     "timestamp": timestamp,
-                    "chunk_index": chunk_index,
+                    "document_chunk_index": document_chunk_index,
                 }
 
                 # Add language if provided

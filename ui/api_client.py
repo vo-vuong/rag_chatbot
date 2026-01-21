@@ -64,7 +64,7 @@ class PreviewChunk:
     source_file: str
     page_number: Optional[int]
     element_type: str
-    chunk_index: int
+    document_chunk_index: int
     file_type: str
     # Extended metadata fields
     headings: List[str] = field(default_factory=list)
@@ -307,7 +307,7 @@ class StreamlitAPIClient:
                         source_file=c["source_file"],
                         page_number=c.get("page_number"),
                         element_type=c.get("element_type", "text"),
-                        chunk_index=c["chunk_index"],
+                        document_chunk_index=c["document_chunk_index"],
                         file_type=c["file_type"],
                         # Extended metadata
                         headings=c.get("headings", []),

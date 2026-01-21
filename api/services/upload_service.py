@@ -125,11 +125,7 @@ class UploadService:
                 if result.metrics and result.metrics.strategy_used
                 else "docling"
             )
-            ocr_used = (
-                result.metrics.ocr_used
-                if result.metrics
-                else False
-            )
+            ocr_used = result.metrics.ocr_used if result.metrics else False
 
             # Build full chunks data (all chunks) with all metadata
             full_chunks_data = []
@@ -159,7 +155,7 @@ class UploadService:
                         source_file=file.filename,
                         page_number=page_num,
                         element_type=elem_type,
-                        chunk_index=idx,
+                        document_chunk_index=idx,
                         file_type=file_type,
                         language=language,
                         # Extended metadata fields
@@ -180,7 +176,7 @@ class UploadService:
                     source_file=chunk.source_file,
                     page_number=chunk.page_number,
                     element_type=chunk.element_type,
-                    chunk_index=chunk.chunk_index,
+                    document_chunk_index=chunk.document_chunk_index,
                     file_type=chunk.file_type,
                     # Extended metadata for preview display
                     headings=chunk.headings,
@@ -344,7 +340,7 @@ class UploadService:
                     "chunk": chunk.text,
                     "page_number": chunk.page_number,
                     "element_type": chunk.element_type,
-                    "chunk_index": chunk.chunk_index,
+                    "document_chunk_index": chunk.document_chunk_index,
                     "file_type": file_type,
                     "language": language,
                     # Extended metadata fields (flattened)

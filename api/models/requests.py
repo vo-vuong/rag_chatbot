@@ -38,7 +38,7 @@ class SaveChunkData(BaseModel):
     source_file: str
     page_number: Optional[int] = None
     element_type: str = "text"
-    chunk_index: int
+    document_chunk_index: int
     file_type: str
     # Extended metadata fields (flattened from DoclingChunker)
     headings: List[str] = []

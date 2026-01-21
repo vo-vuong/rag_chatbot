@@ -13,14 +13,15 @@ API documentation for the RAG Chatbot backend service.
 
 All retrieval parameters use centralized constants from `config/constants.py`:
 
-| Parameter | Default Value | Description |
-|-----------|---------------|-------------|
-| `DEFAULT_NUM_RETRIEVAL` | `5` | Number of text chunks to retrieve |
-| `DEFAULT_SCORE_THRESHOLD` | `0.7` | Minimum similarity score for text search |
-| `DEFAULT_IMAGE_NUM_RETRIEVAL` | `1` | Number of images to retrieve |
-| `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.6` | Minimum similarity score for image search |
+| Parameter                       | Default Value | Description                               |
+| ------------------------------- | ------------- | ----------------------------------------- |
+| `DEFAULT_NUM_RETRIEVAL`         | `5`           | Number of text chunks to retrieve         |
+| `DEFAULT_SCORE_THRESHOLD`       | `0.7`         | Minimum similarity score for text search  |
+| `DEFAULT_IMAGE_NUM_RETRIEVAL`   | `1`           | Number of images to retrieve              |
+| `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.6`         | Minimum similarity score for image search |
 
 These defaults are used in:
+
 - Request models (`api/models/requests.py`)
 - Service layer (`api/services/`)
 - Session state (`backend/session_manager.py`)
@@ -30,14 +31,14 @@ To change defaults globally, modify values in `config/constants.py`.
 
 ### Endpoints Summary
 
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/v1/health` | GET | Health check with Qdrant status |
-| `/api/v1/chat/query` | POST | Synchronous chat with RAG |
-| `/api/v1/chat/query/stream` | POST | SSE streaming chat |
-| `/api/v1/rag/search` | POST | Vector search without LLM |
-| `/api/v1/upload/preview` | POST | Process document and return preview |
-| `/api/v1/upload/save` | POST | Save processed chunks to Qdrant |
+| Endpoint                    | Method | Description                         |
+| --------------------------- | ------ | ----------------------------------- |
+| `/api/v1/health`            | GET    | Health check with Qdrant status     |
+| `/api/v1/chat/query`        | POST   | Synchronous chat with RAG           |
+| `/api/v1/chat/query/stream` | POST   | SSE streaming chat                  |
+| `/api/v1/rag/search`        | POST   | Vector search without LLM           |
+| `/api/v1/upload/preview`    | POST   | Process document and return preview |
+| `/api/v1/upload/save`       | POST   | Save processed chunks to Qdrant     |
 
 ## Endpoints
 
@@ -45,11 +46,11 @@ To change defaults globally, modify values in `config/constants.py`.
 
 Check API and Qdrant database status.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `GET` |
-| **Path** | `/api/v1/health` |
-| **Auth** | None |
+| Property   | Value            |
+| ---------- | ---------------- |
+| **Method** | `GET`            |
+| **Path**   | `/api/v1/health` |
+| **Auth**   | None             |
 
 #### Request
 
@@ -67,10 +68,10 @@ curl -X GET "http://localhost:8000/api/v1/health"
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `"healthy"` or `"degraded"` |
-| `version` | string | API version |
+| Field              | Type    | Description                 |
+| ------------------ | ------- | --------------------------- |
+| `status`           | string  | `"healthy"` or `"degraded"` |
+| `version`          | string  | API version                 |
 | `qdrant_connected` | boolean | Qdrant DB connection status |
 
 ---
@@ -79,21 +80,21 @@ curl -X GET "http://localhost:8000/api/v1/health"
 
 Process a chat query and return complete response.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `POST` |
-| **Path** | `/api/v1/chat/query` |
-| **Auth** | None |
+| Property   | Value                |
+| ---------- | -------------------- |
+| **Method** | `POST`               |
+| **Path**   | `/api/v1/chat/query` |
+| **Auth**   | None                 |
 
 #### Request Body
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `query` | string | Yes | - | User's question |
-| `session_id` | string | Yes | - | Unique session identifier |
-| `mode` | string | No | `"rag"` | `"rag"` or `"llm_only"` |
-| `top_k` | integer | No | `5` | Number of documents to retrieve |
-| `score_threshold` | float | No | `0.7` | Minimum similarity score |
+| Field             | Type    | Required | Default | Description                     |
+| ----------------- | ------- | -------- | ------- | ------------------------------- |
+| `query`           | string  | Yes      | -       | User's question                 |
+| `session_id`      | string  | Yes      | -       | Unique session identifier       |
+| `mode`            | string  | No       | `"rag"` | `"rag"` or `"llm_only"`         |
+| `top_k`           | integer | No       | `5`     | Number of documents to retrieve |
+| `score_threshold` | float   | No       | `0.7`   | Minimum similarity score        |
 
 #### Example Request
 
@@ -139,14 +140,14 @@ curl -X POST "http://localhost:8000/api/v1/chat/query" \
 
 #### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `response` | string | Generated answer |
-| `route` | string | Query route: `"text_only"`, `"image_only"`, or `"text_and_image"` |
-| `route_reasoning` | string | Explanation for routing decision |
-| `retrieved_chunks` | array | Retrieved text chunks with scores, source_file, page_number (optional), element_type |
-| `images` | array | Retrieved images with metadata |
-| `timestamp` | string | ISO timestamp |
+| Field              | Type   | Description                                                                          |
+| ------------------ | ------ | ------------------------------------------------------------------------------------ |
+| `response`         | string | Generated answer                                                                     |
+| `route`            | string | Query route: `"text_only"`, `"image_only"`, or `"text_and_image"`                    |
+| `route_reasoning`  | string | Explanation for routing decision                                                     |
+| `retrieved_chunks` | array  | Retrieved text chunks with scores, source_file, page_number (optional), element_type |
+| `images`           | array  | Retrieved images with metadata                                                       |
+| `timestamp`        | string | ISO timestamp                                                                        |
 
 ---
 
@@ -154,12 +155,12 @@ curl -X POST "http://localhost:8000/api/v1/chat/query" \
 
 Process a chat query with Server-Sent Events (SSE) streaming.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `POST` |
-| **Path** | `/api/v1/chat/query/stream` |
-| **Auth** | None |
-| **Response Type** | `text/event-stream` |
+| Property          | Value                       |
+| ----------------- | --------------------------- |
+| **Method**        | `POST`                      |
+| **Path**          | `/api/v1/chat/query/stream` |
+| **Auth**          | None                        |
+| **Response Type** | `text/event-stream`         |
 
 #### Request Body
 
@@ -179,13 +180,13 @@ curl -X POST "http://localhost:8000/api/v1/chat/query/stream" \
 
 #### SSE Event Types
 
-| Event | Data Structure | Description |
-|-------|---------------|-------------|
-| `route` | `{"route": "text_only", "reasoning": "..."}` | Query routing info |
-| `context` | `[{"text": "...", "score": 0.85}]` | Retrieved context chunks |
-| `token` | `"partial response text..."` | Streamed response tokens |
-| `done` | `{"timestamp": "2026-01-13T10:30:00"}` | Stream complete |
-| `error` | `"error message"` | Error occurred |
+| Event     | Data Structure                               | Description              |
+| --------- | -------------------------------------------- | ------------------------ |
+| `route`   | `{"route": "text_only", "reasoning": "..."}` | Query routing info       |
+| `context` | `[{"text": "...", "score": 0.85}]`           | Retrieved context chunks |
+| `token`   | `"partial response text..."`                 | Streamed response tokens |
+| `done`    | `{"timestamp": "2026-01-13T10:30:00"}`       | Stream complete          |
+| `error`   | `"error message"`                            | Error occurred           |
 
 #### Example SSE Response
 
@@ -204,23 +205,23 @@ data: {"event": "done", "data": {"timestamp": "2026-01-13T10:30:00.123456"}}
 #### JavaScript Example
 
 ```javascript
-const eventSource = new EventSource('/api/v1/chat/query/stream', {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
+const eventSource = new EventSource("/api/v1/chat/query/stream", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
   body: JSON.stringify({
-    query: 'What is deep learning?',
-    session_id: 'session-123'
-  })
+    query: "What is deep learning?",
+    session_id: "session-123",
+  }),
 });
 
 eventSource.onmessage = (event) => {
   const data = JSON.parse(event.data);
   switch (data.event) {
-    case 'token':
-      console.log('Token:', data.data);
+    case "token":
+      console.log("Token:", data.data);
       break;
-    case 'done':
-      console.log('Complete');
+    case "done":
+      console.log("Complete");
       eventSource.close();
       break;
   }
@@ -233,20 +234,20 @@ eventSource.onmessage = (event) => {
 
 Search the vector database directly without LLM generation.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `POST` |
-| **Path** | `/api/v1/rag/search` |
-| **Auth** | None |
+| Property   | Value                |
+| ---------- | -------------------- |
+| **Method** | `POST`               |
+| **Path**   | `/api/v1/rag/search` |
+| **Auth**   | None                 |
 
 #### Request Body
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `query` | string | Yes | - | Search query |
-| `collection_type` | string | No | `"text"` | `"text"` or `"image"` |
-| `top_k` | integer | No | `5` | Number of results |
-| `score_threshold` | float | No | `0.7` | Minimum similarity score |
+| Field             | Type    | Required | Default  | Description              |
+| ----------------- | ------- | -------- | -------- | ------------------------ |
+| `query`           | string  | Yes      | -        | Search query             |
+| `collection_type` | string  | No       | `"text"` | `"text"` or `"image"`    |
+| `top_k`           | integer | No       | `5`      | Number of results        |
+| `score_threshold` | float   | No       | `0.7`    | Minimum similarity score |
 
 #### Example Request (Text Search)
 
@@ -326,22 +327,22 @@ The upload functionality uses a two-step workflow: preview then save.
 
 Process document and return preview data without saving to Qdrant.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `POST` |
-| **Path** | `/api/v1/upload/preview` |
-| **Content-Type** | `multipart/form-data` |
-| **Auth** | None |
+| Property         | Value                    |
+| ---------------- | ------------------------ |
+| **Method**       | `POST`                   |
+| **Path**         | `/api/v1/upload/preview` |
+| **Content-Type** | `multipart/form-data`    |
+| **Auth**         | None                     |
 
 **Request Body (Form Data)**
 
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `file` | File | Yes | - | Document file (PDF/DOCX/CSV) |
-| `language` | string | No | `"en"` | Document language (`"en"` or `"vi"`) |
-| `processing_mode` | string | No | `"fast"` | `"fast"` (no OCR) or `"ocr"` |
-| `csv_columns` | string | No | - | Comma-separated column names for CSV |
-| `vision_failure_mode` | string | No | `"graceful"` | `"graceful"`, `"strict"`, or `"skip"` |
+| Field                 | Type   | Required | Default      | Description                           |
+| --------------------- | ------ | -------- | ------------ | ------------------------------------- |
+| `file`                | File   | Yes      | -            | Document file (PDF/DOCX/CSV)          |
+| `language`            | string | No       | `"en"`       | Document language (`"en"` or `"vi"`)  |
+| `processing_mode`     | string | No       | `"fast"`     | `"fast"` (no OCR) or `"ocr"`          |
+| `csv_columns`         | string | No       | -            | Comma-separated column names for CSV  |
+| `vision_failure_mode` | string | No       | `"graceful"` | `"graceful"`, `"strict"`, or `"skip"` |
 
 **Example Request**
 
@@ -366,7 +367,7 @@ curl -X POST "http://localhost:8000/api/v1/upload/preview" \
       "source_file": "document.pdf",
       "page_number": 1,
       "element_type": "text",
-      "chunk_index": 0,
+      "document_chunk_index": 0,
       "file_type": "pdf",
       "headings": ["Chapter 1"],
       "token_count": 245
@@ -392,39 +393,39 @@ curl -X POST "http://localhost:8000/api/v1/upload/preview" \
 
 **Response Fields**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `"success"` or `"error"` |
-| `file_name` | string | Uploaded filename |
-| `file_type` | string | File extension (pdf/docx/csv) |
-| `chunks` | array | Preview chunks (max 50) |
-| `images` | array | Preview images |
-| `total_chunks_count` | integer | Total number of chunks |
-| `total_images_count` | integer | Total number of images |
-| `processing_time_seconds` | float | Processing duration |
-| `full_chunks_data` | array | Complete chunk data for save step |
-| `full_images_data` | array | Complete image data for save step |
+| Field                     | Type    | Description                       |
+| ------------------------- | ------- | --------------------------------- |
+| `status`                  | string  | `"success"` or `"error"`          |
+| `file_name`               | string  | Uploaded filename                 |
+| `file_type`               | string  | File extension (pdf/docx/csv)     |
+| `chunks`                  | array   | Preview chunks (max 50)           |
+| `images`                  | array   | Preview images                    |
+| `total_chunks_count`      | integer | Total number of chunks            |
+| `total_images_count`      | integer | Total number of images            |
+| `processing_time_seconds` | float   | Processing duration               |
+| `full_chunks_data`        | array   | Complete chunk data for save step |
+| `full_images_data`        | array   | Complete image data for save step |
 
 #### Step 2: Save Upload
 
 Save processed chunks and images to Qdrant.
 
-| Property | Value |
-|----------|-------|
-| **Method** | `POST` |
-| **Path** | `/api/v1/upload/save` |
-| **Content-Type** | `application/json` |
-| **Auth** | None |
+| Property         | Value                 |
+| ---------------- | --------------------- |
+| **Method**       | `POST`                |
+| **Path**         | `/api/v1/upload/save` |
+| **Content-Type** | `application/json`    |
+| **Auth**         | None                  |
 
 **Request Body (JSON)**
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file_name` | string | Yes | Original filename |
-| `file_type` | string | Yes | File type (pdf/docx/csv) |
-| `language` | string | Yes | Document language |
-| `chunks` | array | Yes | Chunk data from preview step |
-| `images` | array | No | Image data from preview step |
+| Field       | Type   | Required | Description                  |
+| ----------- | ------ | -------- | ---------------------------- |
+| `file_name` | string | Yes      | Original filename            |
+| `file_type` | string | Yes      | File type (pdf/docx/csv)     |
+| `language`  | string | Yes      | Document language            |
+| `chunks`    | array  | Yes      | Chunk data from preview step |
+| `images`    | array  | No       | Image data from preview step |
 
 **Example Request**
 
@@ -456,23 +457,23 @@ curl -X POST "http://localhost:8000/api/v1/upload/save" \
 
 **Response Fields**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `"success"` or `"error"` |
-| `file_name` | string | Filename |
-| `chunks_count` | integer | Number of chunks saved |
-| `images_count` | integer | Number of images saved |
-| `message` | string | Status message |
-| `text_collection` | string | Qdrant collection for text chunks |
-| `image_collection` | string | Qdrant collection for images |
+| Field              | Type    | Description                       |
+| ------------------ | ------- | --------------------------------- |
+| `status`           | string  | `"success"` or `"error"`          |
+| `file_name`        | string  | Filename                          |
+| `chunks_count`     | integer | Number of chunks saved            |
+| `images_count`     | integer | Number of images saved            |
+| `message`          | string  | Status message                    |
+| `text_collection`  | string  | Qdrant collection for text chunks |
+| `image_collection` | string  | Qdrant collection for images      |
 
 #### Vision Failure Modes
 
-| Mode | Behavior |
-|------|----------|
+| Mode       | Behavior                                             |
+| ---------- | ---------------------------------------------------- |
 | `graceful` | Use fallback caption on failure, continue processing |
-| `strict` | Abort entire upload on any caption failure |
-| `skip` | Skip failed images, continue with successful ones |
+| `strict`   | Abort entire upload on any caption failure           |
+| `skip`     | Skip failed images, continue with successful ones    |
 
 ---
 
@@ -490,11 +491,11 @@ All endpoints return standard HTTP error responses.
 
 ### Common HTTP Status Codes
 
-| Code | Description |
-|------|-------------|
-| `200` | Success |
+| Code  | Description                 |
+| ----- | --------------------------- |
+| `200` | Success                     |
 | `400` | Bad Request - Invalid input |
-| `500` | Internal Server Error |
+| `500` | Internal Server Error       |
 
 ---
 
@@ -567,11 +568,11 @@ print(save_response.json())
 
 The API uses environment variables for configuration (via `.env` file):
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `OPENAI_API_KEY` | - | OpenAI API key (required) |
-| `QDRANT_HOST` | `localhost` | Qdrant server host |
-| `QDRANT_PORT` | `6333` | Qdrant server port |
+| Variable         | Default     | Description               |
+| ---------------- | ----------- | ------------------------- |
+| `OPENAI_API_KEY` | -           | OpenAI API key (required) |
+| `QDRANT_HOST`    | `localhost` | Qdrant server host        |
+| `QDRANT_PORT`    | `6333`      | Qdrant server port        |
 
 ---
 

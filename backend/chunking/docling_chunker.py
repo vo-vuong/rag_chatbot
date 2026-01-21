@@ -98,9 +98,7 @@ class DoclingChunker:
         try:
             import tiktoken
             from docling_core.transforms.chunker.hybrid_chunker import HybridChunker
-            from docling_core.transforms.chunker.tokenizer.openai import (
-                OpenAITokenizer,
-            )
+            from docling_core.transforms.chunker.tokenizer.openai import OpenAITokenizer
         except ImportError as e:
             logger.error(f"Docling imports failed: {e}")
             raise ImportError(
@@ -282,7 +280,7 @@ class DoclingChunker:
                 text = raw_text
 
             metadata = {
-                "chunk_index": i,
+                "document_chunk_index": i,
                 "headings": headings,
                 "source": "docling",
                 "source_file": source_file,

@@ -709,7 +709,7 @@ class CollectionDataPointsRenderer:
                 "Content": self._truncate_content(payload.get('chunk', '')),
                 "Source": payload.get('source_file', 'N/A'),
                 "Language": payload.get('language', 'N/A'),
-                "Chunk Index": payload.get('chunk_index', 'N/A'),
+                "Chunk Document Index": payload.get('document_chunk_index', 'N/A'),
                 "Timestamp": payload.get('timestamp', 'N/A'),
             }
 
@@ -734,7 +734,13 @@ class CollectionDataPointsRenderer:
         self, row_data: Dict[str, Any], payload: Dict[str, Any]
     ) -> None:
         """Add additional payload fields to row data."""
-        excluded_keys = {'chunk', 'source_file', 'language', 'chunk_index', 'timestamp'}
+        excluded_keys = {
+            'chunk',
+            'source_file',
+            'language',
+            'document_chunk_index',
+            'timestamp',
+        }
 
         for key, value in payload.items():
             if key not in excluded_keys and key not in row_data:

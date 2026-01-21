@@ -697,7 +697,7 @@ class DataUploadUI:
                         for idx, chunk in enumerate(
                             preview_result.preview_chunks[:display_count]
                         ):
-                            st.markdown(f"**Chunk {chunk.chunk_index + 1}:**")
+                            st.markdown(f"**Chunk {chunk.document_chunk_index + 1}:**")
                             preview_text = (
                                 chunk.text[:500] + "..."
                                 if len(chunk.text) > 500

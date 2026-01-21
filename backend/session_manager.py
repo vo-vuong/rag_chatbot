@@ -20,6 +20,7 @@ from config.constants import (
     DEFAULT_NUM_RETRIEVAL,
     DEFAULT_SCORE_THRESHOLD,
     DOCLING_CONFIG,
+    IMAGE_COLLECTION_NAME,
     PAGE_CHAT,
 )
 
@@ -106,7 +107,6 @@ class SessionManager:
             # ============================================================
             # IMAGE SEARCH CONFIGURATION
             # ============================================================
-            'image_collection_name': 'rag_chatbot_images',  # Image collection
             'image_score_threshold': DEFAULT_IMAGE_SCORE_THRESHOLD,
             'image_top_k': DEFAULT_IMAGE_NUM_RETRIEVAL,
             'image_qdrant_manager': None,  # Lazy initialization
@@ -556,14 +556,8 @@ class SessionManager:
     # ============================================================
 
     def get_image_collection_name(self) -> str:
-        """Get image collection name."""
-        return st.session_state.get("image_collection_name", "rag_chatbot_images")
-
-    def set_image_collection_name(self, name: str) -> None:
-        """Set image collection name and reset manager."""
-        st.session_state["image_collection_name"] = name
-        st.session_state["image_qdrant_manager"] = None  # Reset manager
-        logger.info(f"Image collection name set to: {name}")
+        """Get image collection name from constants."""
+        return IMAGE_COLLECTION_NAME
 
     def get_image_score_threshold(self) -> float:
         """Get image search score threshold."""

@@ -9,19 +9,19 @@ This utility provides comprehensive image storage capabilities including:
 - Performance monitoring
 """
 
-import io
 import hashlib
+import io
 import json
 import logging
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union, BinaryIO
-from dataclasses import dataclass, asdict
-from datetime import datetime
-from PIL import Image, ImageOps
-import pi_heif
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import asdict, dataclass
+from datetime import datetime
 from functools import lru_cache
+from pathlib import Path
+from typing import BinaryIO, Dict, List, Optional, Tuple, Union
 
+import pi_heif
+from PIL import Image, ImageOps
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ImageMetadata:
     """Metadata for stored images."""
+
     filename: str
     original_format: str
     stored_format: str
@@ -52,6 +53,7 @@ class ImageMetadata:
 @dataclass
 class StorageStats:
     """Statistics for image storage operations."""
+
     total_images: int = 0
     total_original_size: int = 0
     total_optimized_size: int = 0
@@ -68,16 +70,19 @@ class StorageStats:
 
 class ImageStorageError(Exception):
     """Custom exception for image storage errors."""
+
     pass
 
 
 class ImageValidationError(ImageStorageError):
     """Exception raised for image validation failures."""
+
     pass
 
 
 class ImageOptimizationError(ImageStorageError):
     """Exception raised for image optimization failures."""
+
     pass
 
 
@@ -117,7 +122,7 @@ class ImageStorageUtility:
         max_workers: int = 4,
         enable_optimization: bool = True,
         create_subdirs: bool = True,
-        create_structure_on_init: bool = True
+        create_structure_on_init: bool = True,
     ):
         """
         Initialize the image storage utility.
@@ -163,10 +168,12 @@ class ImageStorageUtility:
         # Only create date-based subdirectories if create_subdirs is True
         if self.create_subdirs:
             today = datetime.now().strftime("%Y-%m-%d")
-            directories.extend([
-                self.base_path / "images" / today,
-                self.base_path / "metadata" / today,
-            ])
+            directories.extend(
+                [
+                    self.base_path / "images" / today,
+                    self.base_path / "metadata" / today,
+                ]
+            )
 
         for directory in directories:
             directory.mkdir(parents=True, exist_ok=True)
@@ -198,10 +205,7 @@ class ImageStorageUtility:
         logger.addHandler(console_handler)
 
     def _generate_storage_path(
-        self,
-        image_hash: str,
-        format_type: str,
-        create_date_dir: bool = True
+        self, image_hash: str, format_type: str, create_date_dir: bool = True
     ) -> Path:
         """
         Generate a storage path for an image based on its hash.
@@ -219,11 +223,24 @@ class ImageStorageUtility:
 
         if create_date_dir and self.create_subdirs:
             today = datetime.now().strftime("%Y-%m-%d")
-            return self.base_path / "images" / today / subdir / f"{image_hash}.{format_type.lower()}"
+            return (
+                self.base_path
+                / "images"
+                / today
+                / subdir
+                / f"{image_hash}.{format_type.lower()}"
+            )
         else:
-            return self.base_path / "images" / subdir / f"{image_hash}.{format_type.lower()}"
+            return (
+                self.base_path
+                / "images"
+                / subdir
+                / f"{image_hash}.{format_type.lower()}"
+            )
 
-    def _generate_metadata_path(self, image_hash: str, create_date_dir: bool = True) -> Path:
+    def _generate_metadata_path(
+        self, image_hash: str, create_date_dir: bool = True
+    ) -> Path:
         """
         Generate a metadata storage path for an image.
 
@@ -275,9 +292,7 @@ class ImageStorageUtility:
             logger.warning(f"Unusual image mode: {image.mode}")
 
     def _optimize_image(
-        self,
-        image: Image.Image,
-        target_format: str = 'PNG'
+        self, image: Image.Image, target_format: str = 'PNG'
     ) -> Tuple[Image.Image, Dict]:
         """
         Optimize an image for storage.
@@ -296,7 +311,7 @@ class ImageStorageUtility:
             optimization_info = {
                 'original_size': image.size,
                 'original_mode': image.mode,
-                'operations': []
+                'operations': [],
             }
 
             # Convert to RGB if necessary (for JPEG)
@@ -307,13 +322,17 @@ class ImageStorageUtility:
                     image = image.convert('RGBA')
                 if image.mode == 'LA':
                     image = image.convert('RGBA')
-                background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
+                background.paste(
+                    image, mask=image.split()[-1] if image.mode == 'RGBA' else None
+                )
                 image = background
                 optimization_info['operations'].append('converted_to_rgb_with_bg')
 
             # Resize if too large
             if image.size[0] > self.MAX_WIDTH or image.size[1] > self.MAX_HEIGHT:
-                image.thumbnail((self.MAX_WIDTH, self.MAX_HEIGHT), Image.Resampling.LANCZOS)
+                image.thumbnail(
+                    (self.MAX_WIDTH, self.MAX_HEIGHT), Image.Resampling.LANCZOS
+                )
                 optimization_info['operations'].append('resized')
                 optimization_info['new_size'] = image.size
 
@@ -340,7 +359,7 @@ class ImageStorageUtility:
         image: Image.Image,
         storage_path: Path,
         format_type: str,
-        optimization_info: Optional[Dict] = None
+        optimization_info: Optional[Dict] = None,
     ) -> int:
         """
         Save an image to storage with optimization.
@@ -367,11 +386,23 @@ class ImageStorageUtility:
             # Save with optimization
             with io.BytesIO() as output:
                 if format_type.upper() == 'PNG':
-                    image.save(output, format='PNG', **{k: v for k, v in save_params.items() if v is not None})
+                    image.save(
+                        output,
+                        format='PNG',
+                        **{k: v for k, v in save_params.items() if v is not None},
+                    )
                 elif format_type.upper() == 'JPEG':
-                    image.save(output, format='JPEG', **{k: v for k, v in save_params.items() if v is not None})
+                    image.save(
+                        output,
+                        format='JPEG',
+                        **{k: v for k, v in save_params.items() if v is not None},
+                    )
                 elif format_type.upper() == 'WEBP':
-                    image.save(output, format='WEBP', **{k: v for k, v in save_params.items() if v is not None})
+                    image.save(
+                        output,
+                        format='WEBP',
+                        **{k: v for k, v in save_params.items() if v is not None},
+                    )
                 else:
                     # Fallback to original format
                     image.save(output, format=format_type)
@@ -417,7 +448,7 @@ class ImageStorageUtility:
         optimized_size: int,
         page_number: Optional[int] = None,
         bbox: Optional[Tuple[int, int, int, int]] = None,
-        original_filename: Optional[str] = None
+        original_filename: Optional[str] = None,
     ) -> ImageMetadata:
         """
         Create metadata for a stored image.
@@ -435,7 +466,9 @@ class ImageStorageUtility:
         Returns:
             ImageMetadata object
         """
-        compression_ratio = (original_size - optimized_size) / original_size if original_size > 0 else 0
+        compression_ratio = (
+            (original_size - optimized_size) / original_size if original_size > 0 else 0
+        )
 
         # Determine MIME type
         format_to_mime = {
@@ -444,7 +477,7 @@ class ImageStorageUtility:
             'JPG': 'image/jpeg',
             'WEBP': 'image/webp',
             'HEIC': 'image/heic',
-            'HEIF': 'image/heif'
+            'HEIF': 'image/heif',
         }
 
         return ImageMetadata(
@@ -461,9 +494,12 @@ class ImageStorageUtility:
             page_number=page_number,
             bbox=bbox,
             extraction_timestamp=datetime.now().isoformat(),
-            mime_type=format_to_mime.get(image.format or '', 'application/octet-stream'),
+            mime_type=format_to_mime.get(
+                image.format or '', 'application/octet-stream'
+            ),
             color_mode=image.mode,
-            has_transparency=image.mode in ['RGBA', 'LA'] or 'transparency' in image.info
+            has_transparency=image.mode in ['RGBA', 'LA']
+            or 'transparency' in image.info,
         )
 
     @lru_cache(maxsize=128)
@@ -483,12 +519,23 @@ class ImageStorageUtility:
         # Check both with and without date subdirectories
         for format_type in ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif']:
             # Check with date subdirectory first
-            path_with_date = self.base_path / "images" / today / image_hash[:2] / f"{image_hash}.{format_type}"
+            path_with_date = (
+                self.base_path
+                / "images"
+                / today
+                / image_hash[:2]
+                / f"{image_hash}.{format_type}"
+            )
             if path_with_date.exists():
                 return path_with_date
 
             # Check without date subdirectory
-            path_without_date = self.base_path / "images" / image_hash[:2] / f"{image_hash}.{format_type}"
+            path_without_date = (
+                self.base_path
+                / "images"
+                / image_hash[:2]
+                / f"{image_hash}.{format_type}"
+            )
             if path_without_date.exists():
                 return path_without_date
 
@@ -501,7 +548,7 @@ class ImageStorageUtility:
         page_number: Optional[int] = None,
         bbox: Optional[Tuple[int, int, int, int]] = None,
         target_format: str = 'PNG',
-        force_optimization: bool = None
+        force_optimization: bool = None,
     ) -> Tuple[Path, ImageMetadata]:
         """
         Store an image with optimization and metadata.
@@ -577,11 +624,17 @@ class ImageStorageUtility:
                 return existing_path, existing_metadata
 
             # Determine if optimization should be applied
-            should_optimize = force_optimization if force_optimization is not None else self.enable_optimization
+            should_optimize = (
+                force_optimization
+                if force_optimization is not None
+                else self.enable_optimization
+            )
 
             # Optimize image if requested
             if should_optimize:
-                optimized_image, optimization_info = self._optimize_image(image, target_format)
+                optimized_image, optimization_info = self._optimize_image(
+                    image, target_format
+                )
             else:
                 optimized_image = image
                 optimization_info = {'operations': ['no_optimization']}
@@ -590,7 +643,9 @@ class ImageStorageUtility:
             storage_path = self._generate_storage_path(image_hash, target_format)
 
             # Save image
-            optimized_size = self._save_image(optimized_image, storage_path, target_format, optimization_info)
+            optimized_size = self._save_image(
+                optimized_image, storage_path, target_format, optimization_info
+            )
 
             # Calculate original size
             if isinstance(image_data, Image.Image):
@@ -599,7 +654,9 @@ class ImageStorageUtility:
                 image.save(buffer, format='PNG', optimize=False)
                 original_size = len(buffer.getvalue())
             else:
-                original_size = len(original_bytes) if original_bytes else optimized_size
+                original_size = (
+                    len(original_bytes) if original_bytes else optimized_size
+                )
 
             # Create metadata
             metadata = self._create_metadata(
@@ -610,7 +667,7 @@ class ImageStorageUtility:
                 optimized_size,
                 page_number,
                 bbox,
-                original_filename
+                original_filename,
             )
 
             # Save metadata
@@ -620,8 +677,10 @@ class ImageStorageUtility:
             # Update statistics
             self._update_stats(metadata, target_format)
 
-            logger.info(f"Stored image: {storage_path} (original: {original_size:,} bytes, "
-                       f"optimized: {optimized_size:,} bytes, compression: {metadata.compression_ratio:.1%})")
+            logger.info(
+                f"Stored image: {storage_path} (original: {original_size:,} bytes, "
+                f"optimized: {optimized_size:,} bytes, compression: {metadata.compression_ratio:.1%})"
+            )
 
             return storage_path, metadata
 
@@ -633,7 +692,7 @@ class ImageStorageUtility:
     def store_images_batch(
         self,
         images_list: List[Tuple[Union[bytes, BinaryIO, Image.Image], dict]],
-        target_format: str = 'PNG'
+        target_format: str = 'PNG',
     ) -> List[Tuple[Path, ImageMetadata]]:
         """
         Store multiple images in parallel.
@@ -654,7 +713,7 @@ class ImageStorageUtility:
                     self.store_image,
                     image_data,
                     target_format=target_format,
-                    **metadata_dict
+                    **metadata_dict,
                 ): idx
                 for idx, (image_data, metadata_dict) in enumerate(images_list)
             }
@@ -681,11 +740,15 @@ class ImageStorageUtility:
         self.stats.total_images += 1
         self.stats.total_original_size += metadata.size_bytes
         self.stats.total_optimized_size += metadata.optimized_size_bytes
-        self.stats.total_space_saved += (metadata.size_bytes - metadata.optimized_size_bytes)
+        self.stats.total_space_saved += (
+            metadata.size_bytes - metadata.optimized_size_bytes
+        )
 
         # Update format statistics
         format_key = format_type.upper()
-        self.stats.formats_processed[format_key] = self.stats.formats_processed.get(format_key, 0) + 1
+        self.stats.formats_processed[format_key] = (
+            self.stats.formats_processed.get(format_key, 0) + 1
+        )
 
     def get_storage_stats(self) -> StorageStats:
         """
@@ -695,7 +758,9 @@ class ImageStorageUtility:
             StorageStats object with current statistics
         """
         if self._start_time:
-            self.stats.processing_time_seconds = (datetime.now() - self._start_time).total_seconds()
+            self.stats.processing_time_seconds = (
+                datetime.now() - self._start_time
+            ).total_seconds()
 
         if self.stats.total_images > 0:
             self.stats.average_compression = (
@@ -749,17 +814,20 @@ class ImageStorageUtility:
         Returns:
             Dictionary with 'missing_images', 'missing_metadata', and 'corrupted' lists
         """
-        issues = {
-            'missing_images': [],
-            'missing_metadata': [],
-            'corrupted': []
-        }
+        issues = {'missing_images': [], 'missing_metadata': [], 'corrupted': []}
 
         # Scan all image files
         images_dir = self.base_path / "images"
         if images_dir.exists():
             for image_path in images_dir.rglob("*"):
-                if image_path.is_file() and image_path.suffix.lower() in ['.png', '.jpg', '.jpeg', '.webp', '.heic', '.heif']:
+                if image_path.is_file() and image_path.suffix.lower() in [
+                    '.png',
+                    '.jpg',
+                    '.jpeg',
+                    '.webp',
+                    '.heic',
+                    '.heif',
+                ]:
                     # Get hash from filename
                     image_hash = image_path.stem
 
@@ -787,7 +855,9 @@ class ImageStorageUtility:
                     # Check if image exists
                     image_path = None
                     for format_ext in ['png', 'jpg', 'jpeg', 'webp', 'heic', 'heif']:
-                        potential_path = self._generate_storage_path(image_hash, format_ext, False)
+                        potential_path = self._generate_storage_path(
+                            image_hash, format_ext, False
+                        )
                         if potential_path.exists():
                             image_path = potential_path
                             break
@@ -831,13 +901,15 @@ class ImageStorageUtility:
         for format_type, count in stats.formats_processed.items():
             report_lines.append(f"- {format_type}: {count:,}")
 
-        report_lines.extend([
-            "",
-            "Integrity Issues:",
-            f"- Missing Images: {len(integrity_issues['missing_images'])}",
-            f"- Missing Metadata: {len(integrity_issues['missing_metadata'])}",
-            f"- Corrupted Files: {len(integrity_issues['corrupted'])}",
-        ])
+        report_lines.extend(
+            [
+                "",
+                "Integrity Issues:",
+                f"- Missing Images: {len(integrity_issues['missing_images'])}",
+                f"- Missing Metadata: {len(integrity_issues['missing_metadata'])}",
+                f"- Corrupted Files: {len(integrity_issues['corrupted'])}",
+            ]
+        )
 
         report_content = "\n".join(report_lines)
 
@@ -855,7 +927,7 @@ def store_image_quick(
     image_data: Union[bytes, BinaryIO, Image.Image],
     storage_path: str,
     filename: Optional[str] = None,
-    optimize: bool = True
+    optimize: bool = True,
 ) -> Tuple[str, ImageMetadata]:
     """
     Quick function to store an image with default settings.

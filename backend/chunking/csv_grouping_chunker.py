@@ -6,7 +6,6 @@ column-based grouping and configurable chunk parameters.
 """
 
 import logging
-import uuid
 from typing import Any, Dict, List, Optional
 
 import pandas as pd
@@ -103,7 +102,6 @@ class CSVGroupingChunker:
                 "chunk": chunk_text,
                 "row_index": idx,
                 "row_count": 1,
-                "doc_id": str(uuid.uuid4()),
                 "metadata": {
                     "chunking_strategy": "row_by_row",
                     "source_rows": [idx],
@@ -181,7 +179,6 @@ class CSVGroupingChunker:
             "chunk": chunk_text,
             "group_key": str(group_key) if group_key is not None else "default",
             "row_count": len(group_df),
-            "doc_id": str(uuid.uuid4()),
             "metadata": {
                 "chunking_strategy": "column_grouping",
                 "group_columns": group_columns,
@@ -398,7 +395,6 @@ class CSVGroupingChunker:
                     "chunk": chunk_text,
                     "row_index": start_idx,
                     "row_count": len(chunk_df),
-                    "doc_id": str(uuid.uuid4()),
                     "metadata": {
                         "chunking_strategy": "row_by_row_batched",
                         "source_rows": chunk_df.index.tolist(),
@@ -487,7 +483,6 @@ class CSVGroupingChunker:
                     "group_key": str(group_key) if group_key else "default",
                     "row_index": start_idx,
                     "row_count": len(chunk_df),
-                    "doc_id": str(uuid.uuid4()),
                     "metadata": {
                         "chunking_strategy": "column_grouping_split",
                         "group_columns": group_columns,

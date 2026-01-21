@@ -722,9 +722,9 @@ class CollectionDataPointsRenderer:
         df = pd.DataFrame(table_data)
         st.dataframe(df, use_container_width=True, hide_index=True)
 
-    def _truncate_id(self, point_id: str) -> str:
-        """Truncate point ID for display."""
-        return point_id[:8] + '...' if len(point_id) > 8 else point_id
+    def _truncate_id(self, point_id: int) -> str:
+        """Format point ID for display."""
+        return str(point_id)
 
     def _truncate_content(self, content: str) -> str:
         """Truncate content for display."""

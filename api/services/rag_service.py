@@ -77,7 +77,7 @@ class RAGService:
             ChunkElement.from_qdrant_payload(
                 r["payload"],
                 r["score"],
-                point_id=str(r["id"])
+                point_id=r["id"]  # Already an integer from Qdrant
             )
             for r in results
         ]

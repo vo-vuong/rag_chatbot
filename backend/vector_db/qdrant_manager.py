@@ -3,7 +3,6 @@ Qdrant Vector Database Manager.
 """
 
 import logging
-import uuid
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -128,6 +127,50 @@ class QdrantManager:
             logger.error(f"Error ensuring collection: {str(e)}")
             return False
 
+    def _get_max_point_id(self) -> int:
+        """Get the maximum point ID in the collection for auto-increment.
+
+        Returns:
+            Maximum point ID (0 if collection is empty or doesn't exist)
+        """
+        try:
+            if not self.collection_exists():
+                return 0
+
+            info = self.get_collection_info()
+            if not info or info.get("points_count", 0) == 0:
+                return 0
+
+            # Scroll through all points to find max ID
+            # (Qdrant's order_by doesn't support point ID ordering)
+            max_id = 0
+            offset = None
+
+            while True:
+                scroll_result = self.client.scroll(
+                    collection_name=self.collection_name,
+                    limit=1000,
+                    offset=offset,
+                    with_payload=False,
+                    with_vectors=False,
+                )
+
+                points, next_offset = scroll_result
+
+                for point in points:
+                    if isinstance(point.id, int) and point.id > max_id:
+                        max_id = point.id
+
+                if next_offset is None:
+                    break
+                offset = next_offset
+
+            return max_id
+
+        except Exception as e:
+            logger.warning(f"Could not get max point ID: {e}")
+            return 0
+
     def add_documents(
         self,
         chunks_df: pd.DataFrame,
@@ -157,20 +200,26 @@ class QdrantManager:
         try:
             logger.info(f"Adding {len(chunks_df)} documents to {self.collection_name}")
 
+            # Get current max point ID for auto-increment
+            current_max_id = self._get_max_point_id()
+            next_id = current_max_id + 1
+
             points = []
             timestamp = datetime.now().isoformat()
 
             for idx, (_, row) in enumerate(chunks_df.iterrows()):
-                point_id = str(uuid.uuid4())
+                point_id = next_id + idx
 
                 # Simple metadata (no session_id)
+                # Use chunk_index from DataFrame if exists, otherwise use loop index
+                chunk_index = row.get("chunk_index", idx)
                 payload = {
                     "chunk": row.get("chunk", ""),
                     "source_file": row.get(
                         "source_file", source_file
                     ),  # Use individual chunk source_file, fallback to parameter
                     "timestamp": timestamp,
-                    "chunk_index": idx,
+                    "chunk_index": chunk_index,
                 }
 
                 # Add language if provided
@@ -508,7 +557,7 @@ class QdrantManager:
             formatted_points = []
             for point in points:
                 point_data = {
-                    "id": str(point.id),
+                    "id": point.id,  # Keep as integer
                     "payload": point.payload if with_payload else {},
                 }
 
@@ -598,7 +647,7 @@ class QdrantManager:
             points = []
             for hit in search_result:
                 point_data = {
-                    "id": str(hit.id),
+                    "id": hit.id,  # Keep as integer
                     "payload": hit.payload,
                     "score": hit.score,
                 }

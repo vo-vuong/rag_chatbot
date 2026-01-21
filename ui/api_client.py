@@ -23,7 +23,7 @@ class UIChunk:
     source_file: str
     page_number: Optional[int] = None
     element_type: str = "text"
-    point_id: Optional[str] = None
+    point_id: Optional[int] = None
 
 
 @dataclass

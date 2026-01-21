@@ -8,7 +8,6 @@ configurable chunking parameters, and integration with the existing document pro
 import gc
 import logging
 import time
-import uuid
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -185,7 +184,6 @@ class CSVProcessingStrategy(DocumentProcessingStrategy):
                         **chunk.get("metadata", {}),
                         "source_file": Path(file_path).name,
                         "file_type": "CSV",
-                        "doc_id": chunk.get("doc_id", str(uuid.uuid4())),
                         "processing_mode": processing_mode,
                     },
                 }
@@ -418,7 +416,6 @@ class CSVProcessingStrategy(DocumentProcessingStrategy):
                             "chunk": chunk_text,
                             "row_index": len(chunks) * chunk_size,
                             "row_count": len(rows_buffer),
-                            "doc_id": str(uuid.uuid4()),
                             "metadata": {
                                 "chunking_strategy": "streaming_row_by_row",
                                 "source_rows": [r.name for r in rows_buffer],
@@ -448,7 +445,6 @@ class CSVProcessingStrategy(DocumentProcessingStrategy):
                     "chunk": chunk_text,
                     "row_index": len(chunks) * chunk_size,
                     "row_count": len(rows_buffer),
-                    "doc_id": str(uuid.uuid4()),
                     "metadata": {
                         "chunking_strategy": "streaming_row_by_row",
                         "source_rows": [r.name for r in rows_buffer],

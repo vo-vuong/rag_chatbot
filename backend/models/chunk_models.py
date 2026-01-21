@@ -25,11 +25,11 @@ class ChunkElement:
     page_number: Optional[int] = None
     element_type: str = "text"  # text, table, list, etc.
     metadata: Dict[str, Any] = field(default_factory=dict)
-    point_id: Optional[str] = None  # Qdrant point ID
+    point_id: Optional[int] = None  # Qdrant point ID (auto-incrementing integer)
 
     @classmethod
     def from_qdrant_payload(
-        cls, payload: Dict[str, Any], score: float = 0.0, point_id: Optional[str] = None
+        cls, payload: Dict[str, Any], score: float = 0.0, point_id: Optional[int] = None
     ) -> "ChunkElement":
         """Create from Qdrant search result payload.
 

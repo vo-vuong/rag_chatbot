@@ -19,7 +19,7 @@ class RetrievedChunk(BaseModel):
     source_file: str = "Unknown"
     page_number: Optional[int] = None
     element_type: str = "text"
-    point_id: Optional[str] = None  # Qdrant point ID
+    point_id: Optional[int] = None  # Qdrant point ID (auto-incrementing integer)
 
     @classmethod
     def from_chunk_element(cls, chunk: "ChunkElement") -> "RetrievedChunk":

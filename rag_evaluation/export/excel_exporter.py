@@ -1,0 +1,194 @@
+"""
+Excel export utilities for evaluation results.
+
+Provides standardized export of evaluation results to Excel format
+with summary and per-query detail sheets.
+"""
+
+import logging
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List
+
+import pandas as pd
+
+from rag_evaluation.base.evaluation_result import EvaluationResult
+
+logger = logging.getLogger(__name__)
+
+
+class ExcelExporter:
+    """
+    Exporter for evaluation results to Excel format.
+
+    Creates Excel files with multiple sheets:
+    - Summary: Aggregated metrics and statistics
+    - Per-Query Results: Detailed results for each query
+    """
+
+    def __init__(self, output_dir: Path):
+        """
+        Initialize the Excel exporter.
+
+        Args:
+            output_dir: Directory to save output files
+        """
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def export_single_metric(
+        self,
+        result: EvaluationResult,
+        output_path: Path = None,
+    ) -> Path:
+        """
+        Export single metric evaluation result to Excel.
+
+        Args:
+            result: Evaluation result to export
+            output_path: Optional custom output path
+
+        Returns:
+            Path to the created Excel file
+        """
+        if output_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{result.metric_name}_k{result.k}_results_{timestamp}.xlsx"
+            output_path = self.output_dir / filename
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create summary DataFrame
+        summary_df = self._create_summary_df(result)
+
+        # Create per-query results DataFrame
+        results_df = pd.DataFrame(result.get_query_results_as_dicts())
+
+        # Write to Excel
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            summary_df.to_excel(writer, sheet_name="Summary", index=False)
+            results_df.to_excel(writer, sheet_name="Per-Query Results", index=False)
+
+        logger.info(f"Results saved to: {output_path}")
+        return output_path
+
+    def export_multiple_metrics(
+        self,
+        results: List[EvaluationResult],
+        output_path: Path = None,
+    ) -> Path:
+        """
+        Export multiple metric results to a single Excel file.
+
+        Args:
+            results: List of evaluation results to export
+            output_path: Optional custom output path
+
+        Returns:
+            Path to the created Excel file
+        """
+        if not results:
+            raise ValueError("No results to export")
+
+        if output_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            k = results[0].k
+            filename = f"combined_k{k}_results_{timestamp}.xlsx"
+            output_path = self.output_dir / filename
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create combined summary DataFrame
+        combined_summary_df = self._create_combined_summary_df(results)
+
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            combined_summary_df.to_excel(writer, sheet_name="Summary", index=False)
+
+            # Add per-query sheet for each metric
+            for result in results:
+                sheet_name = f"Per-Query ({result.metric_name})"
+                # Truncate sheet name if too long (Excel limit: 31 chars)
+                sheet_name = sheet_name[:31]
+                results_df = pd.DataFrame(result.get_query_results_as_dicts())
+                results_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+        logger.info(f"Combined results saved to: {output_path}")
+        return output_path
+
+    def _create_summary_df(self, result: EvaluationResult) -> pd.DataFrame:
+        """Create summary DataFrame for a single metric result."""
+        summary = result.summary
+        data = {
+            "Metric": [
+                "Evaluation Date",
+                "Metric Name",
+                "K Value",
+                "Score Threshold",
+                "Total Queries",
+                "Score",
+                "Score (%)",
+            ],
+            "Value": [
+                result.evaluation_date.strftime("%Y-%m-%d %H:%M:%S"),
+                result.metric_name,
+                result.k,
+                summary.score_threshold,
+                result.total_queries,
+                f"{result.score:.4f}",
+                f"{result.score * 100:.2f}%",
+            ],
+        }
+
+        # Add additional stats
+        for key, value in summary.additional_stats.items():
+            data["Metric"].append(key)
+            data["Value"].append(value)
+
+        return pd.DataFrame(data)
+
+    def _create_combined_summary_df(
+        self, results: List[EvaluationResult]
+    ) -> pd.DataFrame:
+        """Create combined summary DataFrame for multiple metrics."""
+        first_result = results[0]
+
+        data: Dict[str, List[Any]] = {
+            "Metric": [
+                "Evaluation Date",
+                "K Value",
+                "Score Threshold",
+                "Total Queries",
+                "",
+            ],
+            "Value": [
+                first_result.evaluation_date.strftime("%Y-%m-%d %H:%M:%S"),
+                first_result.k,
+                first_result.summary.score_threshold,
+                first_result.total_queries,
+                "",
+            ],
+        }
+
+        for result in results:
+            # Add section header
+            data["Metric"].append(f"--- {result.metric_name} ---")
+            data["Value"].append("")
+
+            # Add metric score
+            data["Metric"].append(f"{result.metric_name} Score")
+            data["Value"].append(f"{result.score:.4f}")
+
+            data["Metric"].append(f"{result.metric_name} Score (%)")
+            data["Value"].append(f"{result.score * 100:.2f}%")
+
+            # Add additional stats
+            for key, value in result.summary.additional_stats.items():
+                data["Metric"].append(key)
+                data["Value"].append(value)
+
+            data["Metric"].append("")
+            data["Value"].append("")
+
+        return pd.DataFrame(data)

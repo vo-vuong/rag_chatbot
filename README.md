@@ -4,14 +4,14 @@ A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI back
 
 ## Key Features
 
-- **OpenAI Integration**: GPT-4o, GPT-4o Mini, GPT-4 Turbo, GPT-3.5 Turbo
+- **OpenAI Integration**: GPT-4o, GPT-4o Mini
 - **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
-- **Token-Aware Chunking**: Docling HybridChunker with 512-token chunks, 50-token overlap, tiktoken alignment
-- **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with 125+ languages (EasyOCR)
+- **Token-Aware Chunking**: Docling HybridChunker
+- **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with EasyOCR
 - **Vector Database**: Qdrant integration with dual collections (text + images)
 - **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes, query routing
 - **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
-- **REST API**: FastAPI backend with 4 endpoints, SSE streaming, health checks, CORS support
+- **REST API**: FastAPI backend with CORS support
 
 ## Quick Start
 
@@ -141,6 +141,7 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
+- `rag_evaluation/`: RAG retrieval evaluation framework (Hit@K, Recall@K metrics)
 
 ### Design Patterns
 
@@ -157,3 +158,17 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 **Processing**: Docling 2.0+, EasyOCR, pandas, Pillow, imagehash, tiktoken
 **HTTP**: httpx (async-capable), uvicorn ASGI server
 **Infrastructure**: Docker Compose, conda environment management
+
+## RAG Evaluation
+
+Evaluate retrieval performance with extensible metrics framework.
+
+```bash
+# Run Hit@K and Recall@K evaluation
+conda activate rag_chatbot && python -m rag_evaluation --metric hit recall --k 5
+
+# List available metrics
+conda activate rag_chatbot && python -m rag_evaluation --list-metrics
+```
+
+See [rag_evaluation/RAG_EVAL_DOCUMENTATION.md](rag_evaluation/RAG_EVAL_DOCUMENTATION.md) for details on adding custom metrics.

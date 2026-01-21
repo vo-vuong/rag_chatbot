@@ -333,7 +333,7 @@ class QdrantManager:
                                 if collection_info.status
                                 else "unknown"
                             ),
-                            "vectors_count": collection_info.vectors_count,
+                            "vectors_count": collection_info.points_count,  # vectors_count removed in qdrant-client 1.16+
                             "segments_count": collection_info.segments_count,
                             "indexed_vectors_count": collection_info.indexed_vectors_count,
                         }
@@ -399,7 +399,7 @@ class QdrantManager:
             return {
                 "name": collection_name,
                 "points_count": collection_info.points_count,
-                "vectors_count": collection_info.vectors_count,
+                "vectors_count": collection_info.points_count,  # vectors_count removed in qdrant-client 1.16+
                 "segments_count": collection_info.segments_count,
                 "indexed_vectors_count": collection_info.indexed_vectors_count,
                 "status": (

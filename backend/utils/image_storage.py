@@ -7,12 +7,8 @@ This utility provides comprehensive image storage capabilities including:
 - Structured storage with metadata
 - Error handling and logging
 - Performance monitoring
-
-Created: 2025-12-17
-Phase: 01 - Enhanced Image Storage Utility
 """
 
-import os
 import io
 import hashlib
 import json

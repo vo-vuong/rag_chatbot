@@ -18,6 +18,9 @@ from rag_evaluation.metrics.registry import MetricRegistry
 # Import metrics to trigger registration
 import rag_evaluation.metrics.hit_at_k  # noqa: F401
 import rag_evaluation.metrics.recall_at_k  # noqa: F401
+import rag_evaluation.metrics.precision_at_k  # noqa: F401
+import rag_evaluation.metrics.f1_at_k  # noqa: F401
+import rag_evaluation.metrics.mrr_at_k  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +163,8 @@ class Evaluator:
 
         Returns list of dicts with query info and retrieved IDs.
         """
-        total_queries = len(self.data_loader)
+        # Count valid queries (iter_queries skips invalid rows)
+        total_queries = self.data_loader.get_valid_query_count()
         all_query_data = []
         processed = 0
 

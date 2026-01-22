@@ -63,7 +63,10 @@ def parse_point_ids(point_ids_value: Union[int, str, list, float, None]) -> List
 
         # Try comma-separated format
         if "," in point_ids_value:
-            return [int(x.strip()) for x in point_ids_value.split(",") if x.strip()]
+            try:
+                return [int(x.strip()) for x in point_ids_value.split(",") if x.strip()]
+            except ValueError:
+                return []
 
         # Single value string
         try:

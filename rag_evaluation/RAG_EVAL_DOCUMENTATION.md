@@ -28,6 +28,9 @@ conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 |--------|------------|-------------|
 | Hit@K | `hit` | Proportion of queries where at least one relevant document appears in top-K |
 | Recall@K | `recall` | Average proportion of relevant documents retrieved in top-K |
+| Precision@K | `precision` | Average proportion of retrieved documents that are relevant |
+| F1@K | `f1` | Harmonic mean of Precision@K and Recall@K |
+| MRR@K | `mrr` | Mean Reciprocal Rank of first relevant document |
 
 ## CLI Usage
 
@@ -39,7 +42,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `all` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `all` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -194,7 +197,10 @@ rag_evaluation/
 ├── metrics/
 │   ├── registry.py      # Metric registration
 │   ├── hit_at_k.py      # Hit@K implementation
-│   └── recall_at_k.py   # Recall@K implementation
+│   ├── recall_at_k.py   # Recall@K implementation
+│   ├── precision_at_k.py # Precision@K implementation
+│   ├── f1_at_k.py       # F1@K implementation
+│   └── mrr_at_k.py      # MRR@K implementation
 ├── data/
 │   ├── data_loader.py   # Test data loading
 │   └── point_id_parser.py  # ID parsing utilities

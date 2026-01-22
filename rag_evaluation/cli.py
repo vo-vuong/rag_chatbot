@@ -15,6 +15,9 @@ Usage:
 
     # Run multiple specific metrics
     conda activate rag_chatbot && python -m rag_evaluation --metric hit recall --k 5
+
+    # Run with limit
+    conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5 --limit 5
 """
 
 import argparse
@@ -33,6 +36,9 @@ from rag_evaluation.metrics.registry import MetricRegistry
 # Import metrics to register them
 import rag_evaluation.metrics.hit_at_k  # noqa: F401
 import rag_evaluation.metrics.recall_at_k  # noqa: F401
+import rag_evaluation.metrics.precision_at_k  # noqa: F401
+import rag_evaluation.metrics.f1_at_k  # noqa: F401
+import rag_evaluation.metrics.mrr_at_k  # noqa: F401
 
 
 def setup_logging(verbose: bool) -> None:

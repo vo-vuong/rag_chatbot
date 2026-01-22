@@ -141,7 +141,7 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
-- `rag_evaluation/`: RAG retrieval evaluation framework (Hit@K, Recall@K metrics)
+- `rag_evaluation/`: RAG retrieval evaluation framework (Hit@K, Recall@K, Precision@K, F1@K, MRR@K metrics)
 
 ### Design Patterns
 
@@ -164,8 +164,11 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 Evaluate retrieval performance with extensible metrics framework.
 
 ```bash
-# Run Hit@K and Recall@K evaluation
-conda activate rag_chatbot && python -m rag_evaluation --metric hit recall --k 5
+# Run all metrics
+conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5
+
+# Run specific metrics
+conda activate rag_chatbot && python -m rag_evaluation --metric hit recall precision f1 mrr --k 5
 
 # List available metrics
 conda activate rag_chatbot && python -m rag_evaluation --list-metrics

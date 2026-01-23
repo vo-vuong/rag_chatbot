@@ -1,10 +1,12 @@
 # RAG Evaluation Framework
 
-A modular, extensible framework for evaluating RAG retrieval performance using standardized metrics.
+A modular, extensible framework for evaluating RAG performance using retrieval and generation metrics.
 
 ## Overview
 
-This module provides tools to evaluate how well your RAG system retrieves relevant documents. It supports multiple metrics, configurable parameters, and exports results to Excel for analysis.
+This module provides tools to evaluate:
+1. **Retrieval Quality**: How well your RAG system retrieves relevant documents (Hit@K, Recall@K, etc.)
+2. **Generation Quality**: How faithful and accurate the LLM responses are (Faithfulness via RAGAS)
 
 ## Quick Start
 
@@ -15,14 +17,19 @@ conda activate rag_chatbot && python -m rag_evaluation --metric hit --k 5
 # Run Recall@K with verbose output
 conda activate rag_chatbot && python -m rag_evaluation --metric recall --k 10 -v
 
-# Run all metrics
+# Run all retrieval metrics
 conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5
+
+# Run Faithfulness (generation metric)
+conda activate rag_chatbot && python -m rag_evaluation --metric faithfulness --k 5
 
 # List available metrics
 conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 ```
 
 ## Available Metrics
+
+### Retrieval Metrics
 
 | Metric | Short Name | Description |
 |--------|------------|-------------|
@@ -31,6 +38,12 @@ conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 | Precision@K | `precision` | Average proportion of retrieved documents that are relevant |
 | F1@K | `f1` | Harmonic mean of Precision@K and Recall@K |
 | MRR@K | `mrr` | Mean Reciprocal Rank of first relevant document |
+
+### Generation Metrics
+
+| Metric | Short Name | Description |
+|--------|------------|-------------|
+| Faithfulness | `faithfulness` | Measures factual consistency between LLM response and retrieved context (via RAGAS) |
 
 ## CLI Usage
 
@@ -42,7 +55,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `all` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `all` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -52,24 +65,27 @@ python -m rag_evaluation [OPTIONS]
 | `-o, --output` | Custom output Excel file path | auto-generated |
 | `--no-export` | Don't export results to Excel | off |
 | `--list-metrics` | List available metrics and exit | - |
+| `--model` | LLM model for generation metrics | `gpt-4o-mini` |
 
 ### Examples
 
 ```bash
-# Multiple metrics
+# Multiple retrieval metrics
 python -m rag_evaluation --metric hit recall --k 5
+
+# Faithfulness with custom model
+python -m rag_evaluation --metric faithfulness --k 5 --model gpt-4o
 
 # Custom test data with score threshold
 python -m rag_evaluation --metric recall --k 10 -t 0.7 --test-data custom_data.xlsx
 
 # Limit queries for quick testing
-python -m rag_evaluation --metric hit --k 5 --limit 10 -v
-
-# Custom output path
-python -m rag_evaluation --metric all --k 5 -o my_results.xlsx
+python -m rag_evaluation --metric faithfulness --k 5 --limit 10 -v
 ```
 
 ## Programmatic Usage
+
+### Retrieval Metrics
 
 ```python
 from rag_evaluation import Evaluator
@@ -94,6 +110,32 @@ results = evaluator.run(
 for name, result in results.items():
     print(f"{result.metric_name}: {result.score:.4f}")
     print(f"  Total queries: {result.total_queries}")
+```
+
+### Generation Metrics (Faithfulness)
+
+```python
+from rag_evaluation.generation_evaluator import GenerationEvaluator
+
+# Create evaluator
+evaluator = GenerationEvaluator(
+    test_data_path="path/to/test_data.xlsx",
+    api_base_url="http://localhost:8000",
+    limit=None,
+)
+
+# Run Faithfulness evaluation
+result = evaluator.run(
+    metric="faithfulness",
+    top_k=5,
+    score_threshold=0.0,
+    verbose=True,
+    model_name="gpt-4o-mini",  # or "gpt-4o"
+)
+
+# Access results
+print(f"Faithfulness Score: {result['summary']['score']:.4f}")
+print(f"Total queries: {result['summary']['total_queries']}")
 ```
 
 ## Adding New Metrics
@@ -187,31 +229,66 @@ The test data Excel file should have the following columns:
 
 ```
 rag_evaluation/
-├── __init__.py          # Package exports
-├── __main__.py          # Entry point for python -m
-├── cli.py               # Command-line interface
-├── evaluator.py         # Main evaluation orchestrator
+├── __init__.py              # Package exports
+├── __main__.py              # Entry point for python -m
+├── cli.py                   # Command-line interface
+├── evaluator.py             # Retrieval metrics orchestrator
+├── generation_evaluator.py  # Generation metrics orchestrator
 ├── base/
-│   ├── metric_interface.py    # Abstract base for metrics
-│   └── evaluation_result.py   # Result dataclasses
+│   ├── metric_interface.py           # Abstract base for retrieval metrics
+│   ├── generation_metric_interface.py # Abstract base for generation metrics
+│   └── evaluation_result.py          # Result dataclasses
 ├── metrics/
-│   ├── registry.py      # Metric registration
-│   ├── hit_at_k.py      # Hit@K implementation
-│   ├── recall_at_k.py   # Recall@K implementation
-│   ├── precision_at_k.py # Precision@K implementation
-│   ├── f1_at_k.py       # F1@K implementation
-│   └── mrr_at_k.py      # MRR@K implementation
+│   ├── registry.py          # Metric registration
+│   ├── hit_at_k.py          # Hit@K implementation
+│   ├── recall_at_k.py       # Recall@K implementation
+│   ├── precision_at_k.py    # Precision@K implementation
+│   ├── f1_at_k.py           # F1@K implementation
+│   ├── mrr_at_k.py          # MRR@K implementation
+│   └── faithfulness.py      # Faithfulness (RAGAS) implementation
 ├── data/
-│   ├── data_loader.py   # Test data loading
-│   └── point_id_parser.py  # ID parsing utilities
+│   ├── data_loader.py       # Test data loading
+│   └── point_id_parser.py   # ID parsing utilities
 ├── api/
-│   └── rag_api_client.py  # RAG API client
+│   └── rag_api_client.py    # RAG API client (search + chat)
 ├── export/
-│   └── excel_exporter.py  # Excel export
-├── results/             # Default output directory
+│   └── excel_exporter.py    # Excel export
+├── results/                 # Default output directory
 └── prepare_testing_data/
     └── qr_smartphone_dataset.xlsx  # Sample test data
 ```
+
+## Faithfulness Metric Details
+
+### How It Works
+
+Faithfulness measures how **factually consistent** the LLM response is with the retrieved context.
+
+**Formula:**
+```
+Faithfulness = (Claims supported by context) / (Total claims in response)
+```
+
+**Process:**
+1. Extract all factual claims from the LLM response
+2. Verify each claim against the retrieved contexts
+3. Calculate the ratio of supported claims
+
+### Requirements
+
+- **RAGAS library**: `pip install ragas`
+- **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
+- **RAG API running**: The `/api/v1/chat/query` endpoint must be available
+
+### Inputs (from API)
+
+| Input | Source | Description |
+|-------|--------|-------------|
+| `user_input` | Test data `Query` column | The user's question |
+| `response` | API `response` field | LLM-generated answer |
+| `retrieved_contexts` | API `retrieved_chunks[].text` | Context texts |
+
+**Note**: Faithfulness does NOT require `Ground_truth_answer` from test data.
 
 ## Output
 

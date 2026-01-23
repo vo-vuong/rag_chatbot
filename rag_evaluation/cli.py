@@ -69,23 +69,20 @@ Examples:
   # Run Recall@K with k=10 and verbose output
   python -m rag_evaluation --metric recall --k 10 -v
 
-  # Run all retrieval metrics
+  # Run all metrics (retrieval + generation)
   python -m rag_evaluation --metric all --k 5
 
-  # Run all generation metrics
+  # Run all retrieval metrics only
+  python -m rag_evaluation --metric all_retrieval --k 5
+
+  # Run all generation metrics only
   python -m rag_evaluation --metric all_generation --k 5
 
   # Run Faithfulness (generation metric)
   python -m rag_evaluation --metric faithfulness --k 5
 
-  # Run Response Relevancy (generation metric)
-  python -m rag_evaluation --metric response_relevancy --k 5
-
   # Run Faithfulness with custom model
   python -m rag_evaluation --metric faithfulness --k 5 --model gpt-4o
-
-  # Run Response Relevancy with custom embedding model
-  python -m rag_evaluation --metric response_relevancy --k 5 --embedding-model text-embedding-3-large
 
 Available retrieval metrics: {', '.join(available_metrics)}
 Available generation metrics: {', '.join(GENERATION_METRICS)}
@@ -96,7 +93,7 @@ Available generation metrics: {', '.join(GENERATION_METRICS)}
         "-m", "--metric",
         nargs="+",
         default=["all"],
-        help=f"Metric(s) to run: {', '.join(all_metrics)}, 'all' (retrieval), or 'all_generation' (default: all)",
+        help=f"Metric(s) to run: {', '.join(all_metrics)}, 'all' (both), 'all_retrieval', or 'all_generation' (default: all)",
     )
 
     parser.add_argument(
@@ -209,31 +206,50 @@ def main() -> int:
     # Resolve metrics
     metrics = args.metric[0] if len(args.metric) == 1 else args.metric
 
+    # Expand "all" to both retrieval and generation metrics
     # Expand "all_generation" to all generation metrics
+    # Expand "all_retrieval" to all retrieval metrics
     requested_metrics = [metrics] if isinstance(metrics, str) else metrics
+
+    # Handle "all" - runs both retrieval and generation
+    if "all" in requested_metrics:
+        requested_metrics = [
+            m for m in requested_metrics if m != "all"
+        ] + ["all_retrieval"] + GENERATION_METRICS
+
+    # Handle "all_generation"
     if "all_generation" in requested_metrics:
-        # Replace "all_generation" with all generation metric names
         requested_metrics = [
             m for m in requested_metrics if m != "all_generation"
         ] + GENERATION_METRICS
 
+    # Handle "all_retrieval"
+    has_all_retrieval = "all_retrieval" in requested_metrics
+    if has_all_retrieval:
+        requested_metrics = [m for m in requested_metrics if m != "all_retrieval"]
+
     # Check if any generation metrics are requested
     generation_requested = any(m in GENERATION_METRICS for m in requested_metrics)
-    retrieval_requested = any(
-        m in MetricRegistry.list_metrics() or m == "all"
+    retrieval_requested = has_all_retrieval or any(
+        m in MetricRegistry.list_metrics()
         for m in requested_metrics
     )
 
     try:
-        # Run generation metrics (Faithfulness)
+        # Run generation metrics
         if generation_requested:
             from rag_evaluation.generation_evaluator import GenerationEvaluator
+            from rag_evaluation.export.excel_exporter import ExcelExporter
 
             gen_evaluator = GenerationEvaluator(
                 test_data_path=test_data_path,
                 api_base_url=args.api_url,
                 limit=args.limit,
             )
+
+            # Collect all generation results for combined export
+            generation_results = []
+            generation_query_results = []
 
             for metric_name in requested_metrics:
                 if metric_name in GENERATION_METRICS:
@@ -244,7 +260,11 @@ def main() -> int:
                         verbose=args.verbose,
                         model_name=args.model,
                         embedding_model=args.embedding_model,
+                        export=False,  # Delay export for combined file
                     )
+
+                    generation_results.append(result)
+                    generation_query_results.append(result["query_results"])
 
                     print("\n" + "=" * 60)
                     print(f"{result['metric_name'].upper()} EVALUATION COMPLETE")
@@ -258,21 +278,38 @@ def main() -> int:
                         print(f"  Embedding Model: {result['summary']['embedding_model']}")
                     print("=" * 60)
 
+            # Export combined generation results
+            if generation_results and not args.no_export:
+                exporter = ExcelExporter(DEFAULT_OUTPUT_DIR)
+                if len(generation_results) == 1:
+                    # Single metric - use standard export
+                    export_path = exporter.export_generation_result(
+                        generation_results[0],
+                        generation_query_results[0],
+                        output_path,
+                    )
+                else:
+                    # Multiple metrics - use combined export
+                    export_path = exporter.export_multiple_generation_results(
+                        generation_results,
+                        generation_query_results,
+                        output_path,
+                    )
+                print(f"\nGeneration results exported to: {export_path}")
+
         # Run retrieval metrics
-        if retrieval_requested and not (
-            metrics == "faithfulness" or
-            metrics == "response_relevancy" or
-            metrics == "all_generation" or
-            (isinstance(metrics, list) and set(metrics).issubset(set(GENERATION_METRICS + ["all_generation"])))
-        ):
-            # Filter out generation metrics for retrieval evaluator
-            retrieval_metrics = metrics
-            if isinstance(metrics, list):
+        if retrieval_requested:
+            # Determine which retrieval metrics to run
+            if has_all_retrieval:
+                retrieval_metrics = "all"  # Pass "all" to evaluator.run()
+            else:
+                # Filter out generation metrics
                 retrieval_metrics = [
-                    m for m in metrics
-                    if m not in GENERATION_METRICS and m != "all_generation"
+                    m for m in requested_metrics
+                    if m in MetricRegistry.list_metrics()
                 ]
                 if not retrieval_metrics:
+                    # No retrieval metrics to run
                     return 0
                 retrieval_metrics = retrieval_metrics[0] if len(retrieval_metrics) == 1 else retrieval_metrics
 

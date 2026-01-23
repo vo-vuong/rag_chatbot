@@ -141,7 +141,7 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
-- `rag_evaluation/`: RAG evaluation framework (Hit@K, Recall@K, Precision@K, F1@K, MRR@K, Faithfulness, Response Relevancy)
+- `rag_evaluation/`: RAG evaluation framework (Hit@K, Recall@K, Precision@K, F1@K, MRR@K, Faithfulness, Response Relevancy, Context Precision)
 
 ### Design Patterns
 
@@ -164,10 +164,13 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 Evaluate retrieval and generation performance with extensible metrics framework.
 
 ```bash
-# Run all retrieval metrics
+# Run all metrics (retrieval + generation)
 conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5
 
-# Run all generation metrics
+# Run all retrieval metrics only
+conda activate rag_chatbot && python -m rag_evaluation --metric all_retrieval --k 5
+
+# Run all generation metrics only
 conda activate rag_chatbot && python -m rag_evaluation --metric all_generation --k 5
 
 # Run specific metrics
@@ -178,6 +181,9 @@ conda activate rag_chatbot && python -m rag_evaluation --metric faithfulness --k
 
 # Run Response Relevancy (generation metric)
 conda activate rag_chatbot && python -m rag_evaluation --metric response_relevancy --k 5
+
+# Run Context Precision (generation metric)
+conda activate rag_chatbot && python -m rag_evaluation --metric context_precision --k 5
 
 # List available metrics
 conda activate rag_chatbot && python -m rag_evaluation --list-metrics

@@ -17,8 +17,14 @@ conda activate rag_chatbot && python -m rag_evaluation --metric hit --k 5
 # Run Recall@K with verbose output
 conda activate rag_chatbot && python -m rag_evaluation --metric recall --k 10 -v
 
-# Run all retrieval metrics
+# Run all metrics (retrieval + generation)
 conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5
+
+# Run all retrieval metrics only
+conda activate rag_chatbot && python -m rag_evaluation --metric all_retrieval --k 5
+
+# Run all generation metrics only
+conda activate rag_chatbot && python -m rag_evaluation --metric all_generation --k 5
 
 # Run Faithfulness (generation metric)
 conda activate rag_chatbot && python -m rag_evaluation --metric faithfulness --k 5
@@ -57,7 +63,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `context_precision`, `all`, `all_generation` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `context_precision`, `all`, `all_retrieval`, `all_generation` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -75,6 +81,12 @@ python -m rag_evaluation [OPTIONS]
 ```bash
 # Multiple retrieval metrics
 python -m rag_evaluation --metric hit recall --k 5
+
+# All metrics (retrieval + generation)
+python -m rag_evaluation --metric all --k 5
+
+# All retrieval metrics only
+python -m rag_evaluation --metric all_retrieval --k 5
 
 # All generation metrics
 python -m rag_evaluation --metric all_generation --k 5
@@ -350,6 +362,17 @@ Precision@K = (Relevant chunks at rank K) / K
 ## Output
 
 Results are exported to Excel files in `rag_evaluation/results/`.
+
+### Export Behavior
+
+| Command | Output Files |
+|---------|--------------|
+| `--metric all` | `retrieval_combined_k5_xxx.xlsx` + `generation_combined_k5_xxx.xlsx` |
+| `--metric all_retrieval` | `retrieval_combined_k5_xxx.xlsx` |
+| `--metric all_generation` | `generation_combined_k5_xxx.xlsx` |
+| `--metric hit` | `Hit@K_k5_xxx.xlsx` (single metric) |
+| `--metric faithfulness` | `Faithfulness_k5_xxx.xlsx` (single metric) |
+| `--no-export` | No files exported |
 
 ### Retrieval Metrics Output
 

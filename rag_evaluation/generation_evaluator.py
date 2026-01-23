@@ -18,6 +18,7 @@ from rag_evaluation.base.generation_metric_interface import (
 from rag_evaluation.data.data_loader import TestDataLoader
 from rag_evaluation.export.excel_exporter import ExcelExporter
 from rag_evaluation.metrics.faithfulness import FaithfulnessMetric
+from rag_evaluation.metrics.response_relevancy import ResponseRelevancyMetric
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,7 @@ class GenerationEvaluator:
         score_threshold: float = 0.0,
         verbose: bool = False,
         model_name: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
         export: bool = True,
         output_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
@@ -78,18 +80,19 @@ class GenerationEvaluator:
         Run generation metric evaluation asynchronously.
 
         Args:
-            metric: Metric to run ("faithfulness")
+            metric: Metric to run ("faithfulness", "response_relevancy")
             top_k: Number of documents to retrieve
             score_threshold: Minimum similarity score threshold
             verbose: Print detailed per-query results
             model_name: LLM model for evaluation
+            embedding_model: Embedding model for response_relevancy metric
             export: Whether to export results to Excel
             output_path: Custom output path for results
 
         Returns:
             Dictionary with evaluation results
         """
-        metric_instance = self._get_metric_instance(metric, model_name)
+        metric_instance = self._get_metric_instance(metric, model_name, embedding_model)
 
         logger.info(f"Running {metric_instance.name} evaluation")
         logger.info(f"Model: {model_name}, top_k={top_k}, threshold={score_threshold}")
@@ -136,6 +139,7 @@ class GenerationEvaluator:
         score_threshold: float = 0.0,
         verbose: bool = False,
         model_name: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
         export: bool = True,
         output_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
@@ -143,11 +147,12 @@ class GenerationEvaluator:
         Run generation metric evaluation (synchronous wrapper).
 
         Args:
-            metric: Metric to run ("faithfulness")
+            metric: Metric to run ("faithfulness", "response_relevancy")
             top_k: Number of documents to retrieve
             score_threshold: Minimum similarity score threshold
             verbose: Print detailed per-query results
             model_name: LLM model for evaluation
+            embedding_model: Embedding model for response_relevancy metric
             export: Whether to export results to Excel
             output_path: Custom output path for results
 
@@ -156,16 +161,28 @@ class GenerationEvaluator:
         """
         return asyncio.run(
             self.run_async(
-                metric, top_k, score_threshold, verbose, model_name, export, output_path
+                metric,
+                top_k,
+                score_threshold,
+                verbose,
+                model_name,
+                embedding_model,
+                export,
+                output_path,
             )
         )
 
     def _get_metric_instance(
-        self, metric: str, model_name: str
+        self, metric: str, model_name: str, embedding_model: str = "text-embedding-3-small"
     ) -> GenerationMetric:
         """Get metric instance by name."""
         if metric.lower() == "faithfulness":
             return FaithfulnessMetric(model_name=model_name)
+        elif metric.lower() == "response_relevancy":
+            return ResponseRelevancyMetric(
+                model_name=model_name,
+                embedding_model=embedding_model,
+            )
         else:
             raise ValueError(f"Unknown generation metric: {metric}")
 

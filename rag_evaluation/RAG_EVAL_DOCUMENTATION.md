@@ -44,6 +44,7 @@ conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 | Metric | Short Name | Description |
 |--------|------------|-------------|
 | Faithfulness | `faithfulness` | Measures factual consistency between LLM response and retrieved context (via RAGAS) |
+| Response Relevancy | `response_relevancy` | Measures how relevant the response is to the user's question (via RAGAS) |
 
 ## CLI Usage
 
@@ -55,7 +56,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `all` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `all`, `all_generation` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -66,6 +67,7 @@ python -m rag_evaluation [OPTIONS]
 | `--no-export` | Don't export results to Excel | off |
 | `--list-metrics` | List available metrics and exit | - |
 | `--model` | LLM model for generation metrics | `gpt-4o-mini` |
+| `--embedding-model` | Embedding model for response_relevancy | `text-embedding-3-small` |
 
 ### Examples
 
@@ -73,8 +75,14 @@ python -m rag_evaluation [OPTIONS]
 # Multiple retrieval metrics
 python -m rag_evaluation --metric hit recall --k 5
 
+# All generation metrics
+python -m rag_evaluation --metric all_generation --k 5
+
 # Faithfulness with custom model
 python -m rag_evaluation --metric faithfulness --k 5 --model gpt-4o
+
+# Response Relevancy with custom embedding model
+python -m rag_evaluation --metric response_relevancy --k 5 --embedding-model text-embedding-3-large
 
 # Custom test data with score threshold
 python -m rag_evaluation --metric recall --k 10 -t 0.7 --test-data custom_data.xlsx
@@ -247,7 +255,8 @@ rag_evaluation/
 │   ├── precision_at_k.py    # Precision@K implementation
 │   ├── f1_at_k.py           # F1@K implementation
 │   ├── mrr_at_k.py          # MRR@K implementation
-│   └── faithfulness.py      # Faithfulness (RAGAS) implementation
+│   ├── faithfulness.py      # Faithfulness (RAGAS) implementation
+│   └── response_relevancy.py # Response Relevancy (RAGAS) implementation
 ├── data/
 │   ├── data_loader.py       # Test data loading
 │   └── point_id_parser.py   # ID parsing utilities

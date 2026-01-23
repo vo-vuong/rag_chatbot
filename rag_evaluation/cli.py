@@ -41,7 +41,7 @@ import rag_evaluation.metrics.f1_at_k  # noqa: F401
 import rag_evaluation.metrics.mrr_at_k  # noqa: F401
 
 # Generation metrics (handled separately)
-GENERATION_METRICS = ["faithfulness"]
+GENERATION_METRICS = ["faithfulness", "response_relevancy"]
 
 
 def setup_logging(verbose: bool) -> None:
@@ -72,11 +72,20 @@ Examples:
   # Run all retrieval metrics
   python -m rag_evaluation --metric all --k 5
 
+  # Run all generation metrics
+  python -m rag_evaluation --metric all_generation --k 5
+
   # Run Faithfulness (generation metric)
   python -m rag_evaluation --metric faithfulness --k 5
 
+  # Run Response Relevancy (generation metric)
+  python -m rag_evaluation --metric response_relevancy --k 5
+
   # Run Faithfulness with custom model
   python -m rag_evaluation --metric faithfulness --k 5 --model gpt-4o
+
+  # Run Response Relevancy with custom embedding model
+  python -m rag_evaluation --metric response_relevancy --k 5 --embedding-model text-embedding-3-large
 
 Available retrieval metrics: {', '.join(available_metrics)}
 Available generation metrics: {', '.join(GENERATION_METRICS)}
@@ -87,7 +96,7 @@ Available generation metrics: {', '.join(GENERATION_METRICS)}
         "-m", "--metric",
         nargs="+",
         default=["all"],
-        help=f"Metric(s) to run: {', '.join(all_metrics)}, or 'all' (default: all)",
+        help=f"Metric(s) to run: {', '.join(all_metrics)}, 'all' (retrieval), or 'all_generation' (default: all)",
     )
 
     parser.add_argument(
@@ -157,6 +166,13 @@ Available generation metrics: {', '.join(GENERATION_METRICS)}
         help="LLM model for generation metrics (default: gpt-4o-mini)",
     )
 
+    parser.add_argument(
+        "--embedding-model",
+        type=str,
+        default="text-embedding-3-small",
+        help="Embedding model for response_relevancy metric (default: text-embedding-3-small)",
+    )
+
     return parser.parse_args()
 
 
@@ -173,7 +189,10 @@ def main() -> int:
                 print(f"  {name}: {metric.name}")
         print("\nAvailable generation metrics:")
         for name in GENERATION_METRICS:
-            print(f"  {name}: Faithfulness (RAGAS)")
+            if name == "faithfulness":
+                print(f"  {name}: Faithfulness (RAGAS)")
+            elif name == "response_relevancy":
+                print(f"  {name}: Response Relevancy (RAGAS)")
         return 0
 
     setup_logging(args.verbose)
@@ -188,8 +207,15 @@ def main() -> int:
     # Resolve metrics
     metrics = args.metric[0] if len(args.metric) == 1 else args.metric
 
-    # Check if any generation metrics are requested
+    # Expand "all_generation" to all generation metrics
     requested_metrics = [metrics] if isinstance(metrics, str) else metrics
+    if "all_generation" in requested_metrics:
+        # Replace "all_generation" with all generation metric names
+        requested_metrics = [
+            m for m in requested_metrics if m != "all_generation"
+        ] + GENERATION_METRICS
+
+    # Check if any generation metrics are requested
     generation_requested = any(m in GENERATION_METRICS for m in requested_metrics)
     retrieval_requested = any(
         m in MetricRegistry.list_metrics() or m == "all"
@@ -215,6 +241,7 @@ def main() -> int:
                         score_threshold=args.threshold,
                         verbose=args.verbose,
                         model_name=args.model,
+                        embedding_model=args.embedding_model,
                     )
 
                     print("\n" + "=" * 60)
@@ -225,15 +252,24 @@ def main() -> int:
                           f"({result['summary']['score']*100:.2f}%)")
                     print(f"  Queries: {result['summary']['total_queries']}")
                     print(f"  Model: {result['summary']['model']}")
+                    if 'embedding_model' in result['summary']:
+                        print(f"  Embedding Model: {result['summary']['embedding_model']}")
                     print("=" * 60)
 
         # Run retrieval metrics
-        if retrieval_requested and not (metrics == "faithfulness" or
-            (isinstance(metrics, list) and metrics == ["faithfulness"])):
+        if retrieval_requested and not (
+            metrics == "faithfulness" or
+            metrics == "response_relevancy" or
+            metrics == "all_generation" or
+            (isinstance(metrics, list) and set(metrics).issubset(set(GENERATION_METRICS + ["all_generation"])))
+        ):
             # Filter out generation metrics for retrieval evaluator
             retrieval_metrics = metrics
             if isinstance(metrics, list):
-                retrieval_metrics = [m for m in metrics if m not in GENERATION_METRICS]
+                retrieval_metrics = [
+                    m for m in metrics
+                    if m not in GENERATION_METRICS and m != "all_generation"
+                ]
                 if not retrieval_metrics:
                     return 0
                 retrieval_metrics = retrieval_metrics[0] if len(retrieval_metrics) == 1 else retrieval_metrics

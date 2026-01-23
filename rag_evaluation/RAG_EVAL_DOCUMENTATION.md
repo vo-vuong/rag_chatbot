@@ -131,6 +131,7 @@ result = evaluator.run(
     score_threshold=0.0,
     verbose=True,
     model_name="gpt-4o-mini",  # or "gpt-4o"
+    export=True,  # Export results to Excel
 )
 
 # Access results
@@ -222,6 +223,7 @@ The test data Excel file should have the following columns:
 |--------|-------------|
 | `query` | The search query text |
 | `point_ids` | Ground truth document IDs (comma-separated or JSON list) |
+| `Ground_truth_answer` | (Optional) Expected answer for generation metrics |
 | `difficulty` | (Optional) Query difficulty level |
 | `source_files` | (Optional) Source file references |
 
@@ -292,8 +294,14 @@ Faithfulness = (Claims supported by context) / (Total claims in response)
 
 ## Output
 
-Results are exported to Excel with:
-- **Summary sheet**: Overall metric scores and configuration
-- **Details sheet**: Per-query results with ground truth vs retrieved IDs
+Results are exported to Excel files in `rag_evaluation/results/`.
 
-Default output location: `rag_evaluation/results/`
+### Retrieval Metrics Output
+
+- **Summary sheet**: Overall metric scores and configuration
+- **Per-Query Results sheet**: query, ground_truth_ids, retrieved_ids, score
+
+### Generation Metrics Output
+
+- **Summary sheet**: Metric score, model, top_k, score statistics
+- **Per-Query Results sheet**: query, response, ground_truth_answer, retrieved_contexts, score

@@ -16,6 +16,7 @@ from rag_evaluation.base.generation_metric_interface import (
     GenerationQueryResult,
 )
 from rag_evaluation.data.data_loader import TestDataLoader
+from rag_evaluation.export.excel_exporter import ExcelExporter
 from rag_evaluation.metrics.faithfulness import FaithfulnessMetric
 
 logger = logging.getLogger(__name__)
@@ -61,6 +62,8 @@ class GenerationEvaluator:
         else:
             self.api_client = RAGAPIClient()
 
+        self.exporter = ExcelExporter(self.output_dir)
+
     async def run_async(
         self,
         metric: str = "faithfulness",
@@ -68,6 +71,8 @@ class GenerationEvaluator:
         score_threshold: float = 0.0,
         verbose: bool = False,
         model_name: str = "gpt-4o-mini",
+        export: bool = True,
+        output_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         Run generation metric evaluation asynchronously.
@@ -78,6 +83,8 @@ class GenerationEvaluator:
             score_threshold: Minimum similarity score threshold
             verbose: Print detailed per-query results
             model_name: LLM model for evaluation
+            export: Whether to export results to Excel
+            output_path: Custom output path for results
 
         Returns:
             Dictionary with evaluation results
@@ -93,7 +100,7 @@ class GenerationEvaluator:
 
         summary = metric_instance.aggregate_scores(query_results)
 
-        return {
+        result = {
             "metric_name": metric_instance.name,
             "query_results": query_results,
             "summary": summary,
@@ -106,6 +113,22 @@ class GenerationEvaluator:
             },
         }
 
+        # Log summary
+        logger.info(f"\n{'='*50}")
+        logger.info(f"{metric_instance.name} Results:")
+        logger.info(f"  Score: {summary.get('score', 0):.4f} ({summary.get('score', 0)*100:.2f}%)")
+        logger.info(f"  Queries: {summary.get('total_queries', 0)}")
+        logger.info(f"{'='*50}")
+
+        # Export results
+        if export:
+            path = self.exporter.export_generation_result(
+                result, query_results, output_path
+            )
+            logger.info(f"Results exported to: {path}")
+
+        return result
+
     def run(
         self,
         metric: str = "faithfulness",
@@ -113,6 +136,8 @@ class GenerationEvaluator:
         score_threshold: float = 0.0,
         verbose: bool = False,
         model_name: str = "gpt-4o-mini",
+        export: bool = True,
+        output_path: Optional[Path] = None,
     ) -> Dict[str, Any]:
         """
         Run generation metric evaluation (synchronous wrapper).
@@ -123,12 +148,16 @@ class GenerationEvaluator:
             score_threshold: Minimum similarity score threshold
             verbose: Print detailed per-query results
             model_name: LLM model for evaluation
+            export: Whether to export results to Excel
+            output_path: Custom output path for results
 
         Returns:
             Dictionary with evaluation results
         """
         return asyncio.run(
-            self.run_async(metric, top_k, score_threshold, verbose, model_name)
+            self.run_async(
+                metric, top_k, score_threshold, verbose, model_name, export, output_path
+            )
         )
 
     def _get_metric_instance(
@@ -214,6 +243,8 @@ def run_faithfulness_evaluation(
     limit: Optional[int] = None,
     verbose: bool = False,
     model_name: str = "gpt-4o-mini",
+    export: bool = True,
+    output_path: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Convenience function to run Faithfulness evaluation.
@@ -226,6 +257,8 @@ def run_faithfulness_evaluation(
         limit: Limit number of queries
         verbose: Print detailed results
         model_name: LLM model for evaluation
+        export: Whether to export results to Excel
+        output_path: Custom output path for results
 
     Returns:
         Dictionary with evaluation results
@@ -242,4 +275,6 @@ def run_faithfulness_evaluation(
         score_threshold=score_threshold,
         verbose=verbose,
         model_name=model_name,
+        export=export,
+        output_path=output_path,
     )

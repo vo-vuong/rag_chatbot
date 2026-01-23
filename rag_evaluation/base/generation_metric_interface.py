@@ -23,14 +23,24 @@ class GenerationQueryResult:
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for export."""
-        return {
+        # Extract ground_truth_answer from metadata for better column ordering
+        ground_truth_answer = self.metadata.pop("ground_truth_answer", "")
+
+        result = {
             "query_index": self.query_index,
             "query": self.query,
-            "response": self.response[:200] + "..." if len(self.response) > 200 else self.response,
+            "response": self.response,
+            "ground_truth_answer": ground_truth_answer,
+            "retrieved_contexts": "\n---\n".join(self.retrieved_contexts),
             "num_contexts": len(self.retrieved_contexts),
             "score": self.score,
             **self.metadata,
         }
+
+        # Restore metadata to avoid side effects
+        self.metadata["ground_truth_answer"] = ground_truth_answer
+
+        return result
 
 
 class GenerationMetric(ABC):

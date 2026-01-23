@@ -8,11 +8,12 @@ with summary and per-query detail sheets.
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
 from rag_evaluation.base.evaluation_result import EvaluationResult
+from rag_evaluation.base.generation_metric_interface import GenerationQueryResult
 
 logger = logging.getLogger(__name__)
 
@@ -190,5 +191,82 @@ class ExcelExporter:
 
             data["Metric"].append("")
             data["Value"].append("")
+
+        return pd.DataFrame(data)
+
+    def export_generation_result(
+        self,
+        result: Dict[str, Any],
+        query_results: List[GenerationQueryResult],
+        output_path: Optional[Path] = None,
+    ) -> Path:
+        """
+        Export generation metric evaluation result to Excel.
+
+        Args:
+            result: Dictionary with evaluation results (summary, config, etc.)
+            query_results: List of GenerationQueryResult objects
+            output_path: Optional custom output path
+
+        Returns:
+            Path to the created Excel file
+        """
+        if output_path is None:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            metric_name = result.get("metric_name", "generation")
+            top_k = result.get("config", {}).get("top_k", 5)
+            filename = f"{metric_name}_k{top_k}_results_{timestamp}.xlsx"
+            output_path = self.output_dir / filename
+
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Create summary DataFrame
+        summary_df = self._create_generation_summary_df(result)
+
+        # Create per-query results DataFrame
+        results_df = pd.DataFrame([qr.to_dict() for qr in query_results])
+
+        # Write to Excel
+        with pd.ExcelWriter(output_path, engine="openpyxl") as writer:
+            summary_df.to_excel(writer, sheet_name="Summary", index=False)
+            results_df.to_excel(writer, sheet_name="Per-Query Results", index=False)
+
+        logger.info(f"Generation results saved to: {output_path}")
+        return output_path
+
+    def _create_generation_summary_df(self, result: Dict[str, Any]) -> pd.DataFrame:
+        """Create summary DataFrame for generation metric result."""
+        summary = result.get("summary", {})
+        config = result.get("config", {})
+
+        data = {
+            "Metric": [
+                "Evaluation Date",
+                "Metric Name",
+                "Model",
+                "Top K",
+                "Score Threshold",
+                "Total Queries",
+                "Valid Queries",
+                "Score",
+                "Score (%)",
+                "Min Score",
+                "Max Score",
+            ],
+            "Value": [
+                result.get("evaluation_date", ""),
+                result.get("metric_name", ""),
+                config.get("model", ""),
+                config.get("top_k", ""),
+                config.get("score_threshold", ""),
+                summary.get("total_queries", 0),
+                summary.get("valid_queries", 0),
+                f"{summary.get('score', 0):.4f}",
+                f"{summary.get('score', 0) * 100:.2f}%",
+                f"{summary.get('min_score', 0):.4f}",
+                f"{summary.get('max_score', 0):.4f}",
+            ],
+        }
 
         return pd.DataFrame(data)

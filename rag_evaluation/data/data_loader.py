@@ -92,6 +92,7 @@ class TestDataLoader:
 
             # Extract metadata
             metadata = {
+                "ground_truth_answer": row.get("Ground_truth_answer", ""),
                 "difficulty": row.get("difficulty", ""),
                 "source_files": row.get("Source_files", ""),
             }

@@ -41,7 +41,7 @@ import rag_evaluation.metrics.f1_at_k  # noqa: F401
 import rag_evaluation.metrics.mrr_at_k  # noqa: F401
 
 # Generation metrics (handled separately)
-GENERATION_METRICS = ["faithfulness", "response_relevancy"]
+GENERATION_METRICS = ["faithfulness", "response_relevancy", "context_precision"]
 
 
 def setup_logging(verbose: bool) -> None:
@@ -193,6 +193,8 @@ def main() -> int:
                 print(f"  {name}: Faithfulness (RAGAS)")
             elif name == "response_relevancy":
                 print(f"  {name}: Response Relevancy (RAGAS)")
+            elif name == "context_precision":
+                print(f"  {name}: Context Precision (RAGAS)")
         return 0
 
     setup_logging(args.verbose)

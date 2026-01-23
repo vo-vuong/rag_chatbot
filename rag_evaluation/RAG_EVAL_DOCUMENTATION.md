@@ -45,6 +45,7 @@ conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 |--------|------------|-------------|
 | Faithfulness | `faithfulness` | Measures factual consistency between LLM response and retrieved context (via RAGAS) |
 | Response Relevancy | `response_relevancy` | Measures how relevant the response is to the user's question (via RAGAS) |
+| Context Precision | `context_precision` | Measures how well relevant chunks are ranked higher in retrieved results (via RAGAS) |
 
 ## CLI Usage
 
@@ -56,7 +57,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `all`, `all_generation` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `context_precision`, `all`, `all_generation` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -83,6 +84,9 @@ python -m rag_evaluation --metric faithfulness --k 5 --model gpt-4o
 
 # Response Relevancy with custom embedding model
 python -m rag_evaluation --metric response_relevancy --k 5 --embedding-model text-embedding-3-large
+
+# Context Precision (requires ground_truth_answer in test data)
+python -m rag_evaluation --metric context_precision --k 5
 
 # Custom test data with score threshold
 python -m rag_evaluation --metric recall --k 10 -t 0.7 --test-data custom_data.xlsx
@@ -256,7 +260,8 @@ rag_evaluation/
 │   ├── f1_at_k.py           # F1@K implementation
 │   ├── mrr_at_k.py          # MRR@K implementation
 │   ├── faithfulness.py      # Faithfulness (RAGAS) implementation
-│   └── response_relevancy.py # Response Relevancy (RAGAS) implementation
+│   ├── response_relevancy.py # Response Relevancy (RAGAS) implementation
+│   └── context_precision.py # Context Precision (RAGAS) implementation
 ├── data/
 │   ├── data_loader.py       # Test data loading
 │   └── point_id_parser.py   # ID parsing utilities
@@ -300,6 +305,47 @@ Faithfulness = (Claims supported by context) / (Total claims in response)
 | `retrieved_contexts` | API `retrieved_chunks[].text` | Context texts |
 
 **Note**: Faithfulness does NOT require `Ground_truth_answer` from test data.
+
+## Context Precision Metric Details
+
+### How It Works
+
+Context Precision evaluates how well the retriever ranks **relevant chunks higher** in the retrieved results.
+
+**Formula:**
+```
+Context Precision = Mean of Precision@K for each chunk
+Precision@K = (Relevant chunks at rank K) / K
+```
+
+**Process:**
+1. Retrieve contexts using `/rag/search` API
+2. Use LLM to compare each retrieved chunk against the `Ground_truth_answer`
+3. Determine if each chunk is relevant
+4. Calculate weighted precision based on position
+
+### Requirements
+
+- **RAGAS library**: `pip install ragas`
+- **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
+- **Ground truth answer**: Requires `Ground_truth_answer` column in test data
+- **RAG API running**: The `/api/v1/rag/search` endpoint must be available
+
+### Inputs
+
+| Input | Source | Description |
+|-------|--------|-------------|
+| `user_input` | Test data `Query` column | The user's question |
+| `reference` | Test data `Ground_truth_answer` column | Expected answer for relevance judgment |
+| `retrieved_contexts` | API `/rag/search` response | Context texts from search results |
+
+### Interpretation
+
+| Score | Meaning |
+|-------|---------|
+| 1.0 | All relevant chunks ranked at top positions |
+| 0.5 | Relevant chunks scattered throughout ranking |
+| 0.0 | No relevant chunks or all at bottom |
 
 ## Output
 

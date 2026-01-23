@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class SearchWithContextsResult:
+    """Result from a search query containing contexts and IDs."""
+
+    retrieved_contexts: List[str]
+    retrieved_ids: List[int]
+
+
+@dataclass
 class ChatQueryResult:
     """Result from a chat query containing response and contexts."""
 
@@ -100,6 +108,59 @@ class RAGAPIClient:
         except requests.exceptions.RequestException as e:
             logger.error(f"API request failed for query '{query[:50]}...': {e}")
             return []
+
+    def search_with_contexts(
+        self,
+        query: str,
+        top_k: int = 5,
+        score_threshold: float = 0.0,
+        collection_type: str = "text",
+    ) -> Optional[SearchWithContextsResult]:
+        """
+        Search using RAG API and return retrieved contexts and point IDs.
+
+        Args:
+            query: Search query text
+            top_k: Number of results to retrieve
+            score_threshold: Minimum similarity score threshold
+            collection_type: Type of collection to search ("text" or "image")
+
+        Returns:
+            SearchWithContextsResult with contexts and IDs, or None if failed
+        """
+        url = f"{self.base_url}/api/v1/rag/search"
+        payload = {
+            "query": query,
+            "collection_type": collection_type,
+            "top_k": top_k,
+            "score_threshold": score_threshold,
+        }
+
+        try:
+            response = requests.post(url, json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+
+            results = data.get("results", [])
+            contexts = [
+                r.get("text", "")
+                for r in results
+                if r.get("text")
+            ]
+            point_ids = [
+                r.get("point_id")
+                for r in results
+                if r.get("point_id") is not None
+            ]
+
+            return SearchWithContextsResult(
+                retrieved_contexts=contexts,
+                retrieved_ids=point_ids,
+            )
+
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Search with contexts failed for '{query[:50]}...': {e}")
+            return None
 
     def health_check(self) -> bool:
         """

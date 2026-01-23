@@ -19,6 +19,7 @@ from rag_evaluation.data.data_loader import TestDataLoader
 from rag_evaluation.export.excel_exporter import ExcelExporter
 from rag_evaluation.metrics.faithfulness import FaithfulnessMetric
 from rag_evaluation.metrics.response_relevancy import ResponseRelevancyMetric
+from rag_evaluation.metrics.context_precision import ContextPrecisionMetric
 
 logger = logging.getLogger(__name__)
 
@@ -183,6 +184,8 @@ class GenerationEvaluator:
                 model_name=model_name,
                 embedding_model=embedding_model,
             )
+        elif metric.lower() == "context_precision":
+            return ContextPrecisionMetric(model_name=model_name)
         else:
             raise ValueError(f"Unknown generation metric: {metric}")
 
@@ -209,32 +212,63 @@ class GenerationEvaluator:
         query_results = []
         processed = 0
 
+        # Check if metric requires reference (e.g., context_precision)
+        requires_reference = getattr(metric, "requires_reference", False)
+
         for idx, query, ground_truth_ids, metadata in self.data_loader.iter_queries():
-            # Call chat API to get response and contexts
-            chat_result = self.api_client.chat_query(
-                query=query,
-                top_k=top_k,
-                score_threshold=score_threshold,
-            )
-
             processed += 1
+            ground_truth_answer = metadata.get("ground_truth_answer", "")
 
-            if chat_result is None:
-                logger.warning(f"Skipping query {idx}: API call failed")
-                continue
+            # Use different API based on metric requirements
+            if requires_reference:
+                # Use search API for context_precision (no LLM response needed)
+                search_result = self.api_client.search_with_contexts(
+                    query=query,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                )
+
+                if search_result is None:
+                    logger.warning(f"Skipping query {idx}: Search API call failed")
+                    continue
+
+                retrieved_contexts = search_result.retrieved_contexts
+                response = ""  # Not used for context_precision
+            else:
+                # Use chat API for faithfulness/response_relevancy
+                chat_result = self.api_client.chat_query(
+                    query=query,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                )
+
+                if chat_result is None:
+                    logger.warning(f"Skipping query {idx}: API call failed")
+                    continue
+
+                retrieved_contexts = chat_result.retrieved_contexts
+                response = chat_result.response
 
             # Calculate metric score
-            score, extra_metadata = await metric.calculate_query_score(
-                user_input=query,
-                response=chat_result.response,
-                retrieved_contexts=chat_result.retrieved_contexts,
-            )
+            if requires_reference:
+                score, extra_metadata = await metric.calculate_query_score(
+                    user_input=query,
+                    response=response,
+                    retrieved_contexts=retrieved_contexts,
+                    reference=ground_truth_answer,
+                )
+            else:
+                score, extra_metadata = await metric.calculate_query_score(
+                    user_input=query,
+                    response=response,
+                    retrieved_contexts=retrieved_contexts,
+                )
 
             query_result = GenerationQueryResult(
                 query_index=idx,
                 query=query,
-                response=chat_result.response,
-                retrieved_contexts=chat_result.retrieved_contexts,
+                response=response,
+                retrieved_contexts=retrieved_contexts,
                 score=score,
                 metadata={**metadata, **extra_metadata},
             )

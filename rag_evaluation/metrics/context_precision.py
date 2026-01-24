@@ -40,6 +40,7 @@ class ContextPrecisionMetric(GenerationMetric):
     short_name: str = "context_precision"
     requires_async: bool = True
     requires_reference: bool = True
+    requires_response: bool = False
 
     def __init__(self, model_name: str = "gpt-4o-mini"):
         """

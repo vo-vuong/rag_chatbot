@@ -52,6 +52,8 @@ conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 | Faithfulness | `faithfulness` | Measures factual consistency between LLM response and retrieved context (via RAGAS) |
 | Response Relevancy | `response_relevancy` | Measures how relevant the response is to the user's question (via RAGAS) |
 | Context Precision | `context_precision` | Measures how well relevant chunks are ranked higher in retrieved results (via RAGAS) |
+| Context Recall | `context_recall` | Measures how many relevant claims from reference are captured in retrieved contexts (via RAGAS) |
+| Answer Correctness | `answer_correctness` | Measures correctness of LLM response compared to ground truth (via RAGAS) |
 
 ## CLI Usage
 
@@ -63,7 +65,7 @@ python -m rag_evaluation [OPTIONS]
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `context_precision`, `all`, `all_retrieval`, `all_generation` | `all` |
+| `-m, --metric` | Metric(s) to run: `hit`, `recall`, `precision`, `f1`, `mrr`, `faithfulness`, `response_relevancy`, `context_precision`, `context_recall`, `answer_correctness`, `all`, `all_retrieval`, `all_generation` | `all` |
 | `-k, --k` | Number of top results to consider | `5` |
 | `-t, --threshold` | Minimum similarity score threshold | `0.0` |
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
@@ -99,6 +101,12 @@ python -m rag_evaluation --metric response_relevancy --k 5 --embedding-model tex
 
 # Context Precision (requires ground_truth_answer in test data)
 python -m rag_evaluation --metric context_precision --k 5
+
+# Context Recall (requires ground_truth_answer in test data)
+python -m rag_evaluation --metric context_recall --k 5
+
+# Answer Correctness (requires ground_truth_answer in test data)
+python -m rag_evaluation --metric answer_correctness --k 5
 
 # Custom test data with score threshold
 python -m rag_evaluation --metric recall --k 10 -t 0.7 --test-data custom_data.xlsx
@@ -273,7 +281,9 @@ rag_evaluation/
 │   ├── mrr_at_k.py          # MRR@K implementation
 │   ├── faithfulness.py      # Faithfulness (RAGAS) implementation
 │   ├── response_relevancy.py # Response Relevancy (RAGAS) implementation
-│   └── context_precision.py # Context Precision (RAGAS) implementation
+│   ├── context_precision.py # Context Precision (RAGAS) implementation
+│   ├── context_recall.py    # Context Recall (RAGAS) implementation
+│   └── answer_correctness.py # Answer Correctness (RAGAS) implementation
 ├── data/
 │   ├── data_loader.py       # Test data loading
 │   └── point_id_parser.py   # ID parsing utilities
@@ -358,6 +368,91 @@ Precision@K = (Relevant chunks at rank K) / K
 | 1.0 | All relevant chunks ranked at top positions |
 | 0.5 | Relevant chunks scattered throughout ranking |
 | 0.0 | No relevant chunks or all at bottom |
+
+## Context Recall Metric Details
+
+### How It Works
+
+Context Recall measures how many of the **relevant claims from the reference answer** were successfully captured in the retrieved contexts.
+
+**Formula:**
+```
+Context Recall = (Claims attributable to retrieved context) / (Total claims in reference)
+```
+
+**Process:**
+1. Retrieve contexts using `/rag/search` API
+2. Break down the `Ground_truth_answer` into individual claims
+3. Use LLM to check if each claim can be attributed to the retrieved contexts
+4. Calculate the ratio of attributable claims to total claims
+
+### Requirements
+
+- **RAGAS library**: `pip install ragas`
+- **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
+- **Ground truth answer**: Requires `Ground_truth_answer` column in test data
+- **RAG API running**: The `/api/v1/rag/search` endpoint must be available
+
+### Inputs
+
+| Input | Source | Description |
+|-------|--------|-------------|
+| `user_input` | Test data `Query` column | The user's question |
+| `reference` | Test data `Ground_truth_answer` column | Expected answer for claim extraction |
+| `retrieved_contexts` | API `/rag/search` response | Context texts from search results |
+
+### Interpretation
+
+| Score | Meaning |
+|-------|---------|
+| 1.0 | All claims from reference are supported by retrieved contexts |
+| 0.5 | Half of the claims from reference are found in contexts |
+| 0.0 | No claims from reference are captured in retrieved contexts |
+
+## Answer Correctness Metric Details
+
+### How It Works
+
+Answer Correctness measures how **correct** the LLM response is compared to the ground truth answer by combining factual and semantic similarity.
+
+**Formula:**
+```
+Answer Correctness = (0.75 × Factual Similarity) + (0.25 × Semantic Similarity)
+```
+
+**Factual Similarity** (F1 score of claims):
+```
+F1 = TP / (TP + 0.5 × (FP + FN))
+- TP: Claims present in both response and reference
+- FP: Claims in response but not in reference (incorrect facts)
+- FN: Claims in reference but not in response (missing facts)
+```
+
+**Semantic Similarity**: Embedding-based similarity between response and reference.
+
+### Requirements
+
+- **RAGAS library**: `pip install ragas`
+- **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
+- **Ground truth answer**: Requires `Ground_truth_answer` column in test data
+- **RAG API running**: The `/api/v1/chat/query` endpoint must be available
+
+### Inputs
+
+| Input | Source | Description |
+|-------|--------|-------------|
+| `user_input` | Test data `Query` column | The user's question |
+| `response` | API `/chat/query` response | LLM-generated answer |
+| `reference` | Test data `Ground_truth_answer` column | Expected correct answer |
+
+### Interpretation
+
+| Score | Meaning |
+|-------|---------|
+| 1.0 | Response perfectly matches ground truth (factually and semantically) |
+| 0.7+ | High correctness, minor differences |
+| 0.5 | Partially correct, some facts missing or incorrect |
+| < 0.3 | Mostly incorrect or irrelevant response |
 
 ## Output
 

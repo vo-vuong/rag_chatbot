@@ -55,11 +55,15 @@ class GenerationMetric(ABC):
         name: Human-readable name of the metric
         short_name: Short identifier used in CLI and registry
         requires_async: Whether the metric requires async execution
+        requires_reference: Whether the metric requires ground_truth_answer
+        requires_response: Whether the metric requires LLM response (uses chat API)
     """
 
     name: str = "Base Generation Metric"
     short_name: str = "gen_base"
     requires_async: bool = True
+    requires_reference: bool = False
+    requires_response: bool = True
 
     @abstractmethod
     async def calculate_query_score(

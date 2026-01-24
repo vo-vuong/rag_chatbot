@@ -21,6 +21,7 @@ from rag_evaluation.metrics.faithfulness import FaithfulnessMetric
 from rag_evaluation.metrics.response_relevancy import ResponseRelevancyMetric
 from rag_evaluation.metrics.context_precision import ContextPrecisionMetric
 from rag_evaluation.metrics.context_recall import ContextRecallMetric
+from rag_evaluation.metrics.answer_correctness import AnswerCorrectnessMetric
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,11 @@ class GenerationEvaluator:
             return ContextPrecisionMetric(model_name=model_name)
         elif metric.lower() == "context_recall":
             return ContextRecallMetric(model_name=model_name)
+        elif metric.lower() == "answer_correctness":
+            return AnswerCorrectnessMetric(
+                model_name=model_name,
+                embedding_model=embedding_model,
+            )
         else:
             raise ValueError(f"Unknown generation metric: {metric}")
 
@@ -215,16 +221,31 @@ class GenerationEvaluator:
         query_results = []
         processed = 0
 
-        # Check if metric requires reference (e.g., context_precision)
+        # Check metric requirements
         requires_reference = getattr(metric, "requires_reference", False)
+        requires_response = getattr(metric, "requires_response", True)
 
         for idx, query, ground_truth_ids, metadata in self.data_loader.iter_queries():
             processed += 1
             ground_truth_answer = metadata.get("ground_truth_answer", "")
 
             # Use different API based on metric requirements
-            if requires_reference:
-                # Use search API for context_precision (no LLM response needed)
+            if requires_response:
+                # Use chat API for metrics needing LLM response
+                chat_result = self.api_client.chat_query(
+                    query=query,
+                    top_k=top_k,
+                    score_threshold=score_threshold,
+                )
+
+                if chat_result is None:
+                    logger.warning(f"Skipping query {idx}: Chat API call failed")
+                    continue
+
+                retrieved_contexts = chat_result.retrieved_contexts
+                response = chat_result.response
+            else:
+                # Use search API for metrics not needing LLM response
                 search_result = self.api_client.search_with_contexts(
                     query=query,
                     top_k=top_k,
@@ -236,21 +257,7 @@ class GenerationEvaluator:
                     continue
 
                 retrieved_contexts = search_result.retrieved_contexts
-                response = ""  # Not used for context_precision
-            else:
-                # Use chat API for faithfulness/response_relevancy
-                chat_result = self.api_client.chat_query(
-                    query=query,
-                    top_k=top_k,
-                    score_threshold=score_threshold,
-                )
-
-                if chat_result is None:
-                    logger.warning(f"Skipping query {idx}: API call failed")
-                    continue
-
-                retrieved_contexts = chat_result.retrieved_contexts
-                response = chat_result.response
+                response = ""  # Not needed
 
             # Calculate metric score
             if requires_reference:

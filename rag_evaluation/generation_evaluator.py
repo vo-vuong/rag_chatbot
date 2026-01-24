@@ -20,6 +20,7 @@ from rag_evaluation.export.excel_exporter import ExcelExporter
 from rag_evaluation.metrics.faithfulness import FaithfulnessMetric
 from rag_evaluation.metrics.response_relevancy import ResponseRelevancyMetric
 from rag_evaluation.metrics.context_precision import ContextPrecisionMetric
+from rag_evaluation.metrics.context_recall import ContextRecallMetric
 
 logger = logging.getLogger(__name__)
 
@@ -186,6 +187,8 @@ class GenerationEvaluator:
             )
         elif metric.lower() == "context_precision":
             return ContextPrecisionMetric(model_name=model_name)
+        elif metric.lower() == "context_recall":
+            return ContextRecallMetric(model_name=model_name)
         else:
             raise ValueError(f"Unknown generation metric: {metric}")
 

@@ -9,7 +9,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI back
 - **Token-Aware Chunking**: Docling HybridChunker
 - **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with EasyOCR
 - **Vector Database**: Qdrant integration with dual collections (text + images)
-- **Real-time Chat**: Context-aware conversations with RAG or LLM-only modes, query routing
+- **Real-time Chat**: Context-aware conversations with RAG, query routing
 - **Data Management**: Collection CRUD, adaptive pagination, metadata inspection
 - **REST API**: FastAPI backend with CORS support
 

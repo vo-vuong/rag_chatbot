@@ -92,7 +92,6 @@ Process a chat query and return complete response.
 | ----------------- | ------- | -------- | ------- | ------------------------------- |
 | `query`           | string  | Yes      | -       | User's question                 |
 | `session_id`      | string  | Yes      | -       | Unique session identifier       |
-| `mode`            | string  | No       | `"rag"` | `"rag"` or `"llm_only"`         |
 | `top_k`           | integer | No       | `5`     | Number of documents to retrieve |
 | `score_threshold` | float   | No       | `0.7`   | Minimum similarity score        |
 
@@ -104,7 +103,6 @@ curl -X POST "http://localhost:8000/api/v1/chat/query" \
   -d '{
     "query": "What is machine learning?",
     "session_id": "user-123-session-1",
-    "mode": "rag",
     "top_k": 5,
     "score_threshold": 0.7
   }'
@@ -516,7 +514,6 @@ response = requests.post(
     json={
         "query": "What is machine learning?",
         "session_id": "my-session-123",
-        "mode": "rag",
         "top_k": 3
     }
 )

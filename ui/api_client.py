@@ -156,7 +156,6 @@ class StreamlitAPIClient:
     def chat(
         self,
         query: str,
-        mode: str = "rag",
         top_k: int = 3,
         score_threshold: float = 0.5,
     ) -> APIResponse:
@@ -166,7 +165,6 @@ class StreamlitAPIClient:
             json={
                 "query": query,
                 "session_id": self._session_id,
-                "mode": mode,
                 "top_k": top_k,
                 "score_threshold": score_threshold,
             },
@@ -204,7 +202,6 @@ class StreamlitAPIClient:
     def chat_stream(
         self,
         query: str,
-        mode: str = "rag",
         top_k: int = 3,
         score_threshold: float = 0.5,
     ) -> Iterator[StreamEvent]:
@@ -215,7 +212,6 @@ class StreamlitAPIClient:
             json={
                 "query": query,
                 "session_id": self._session_id,
-                "mode": mode,
                 "top_k": top_k,
                 "score_threshold": score_threshold,
             },

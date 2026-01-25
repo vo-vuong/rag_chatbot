@@ -182,7 +182,6 @@ class RAGAPIClient:
         session_id: str = "eval-session",
         top_k: int = 5,
         score_threshold: float = 0.0,
-        mode: str = "rag",
     ) -> Optional[ChatQueryResult]:
         """
         Query the chat endpoint to get LLM response and retrieved contexts.
@@ -192,7 +191,6 @@ class RAGAPIClient:
             session_id: Session identifier for the chat
             top_k: Number of documents to retrieve
             score_threshold: Minimum similarity score threshold
-            mode: Query mode ("rag" or "llm_only")
 
         Returns:
             ChatQueryResult with response and contexts, or None if failed
@@ -201,7 +199,6 @@ class RAGAPIClient:
         payload = {
             "query": query,
             "session_id": session_id,
-            "mode": mode,
             "top_k": top_k,
             "score_threshold": score_threshold,
         }

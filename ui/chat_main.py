@@ -29,9 +29,6 @@ class ChatMainUI:
         if not self._check_system_status():
             return
 
-        # Render mode selector
-        self._render_mode_selector()
-
         # Display chat messages
         self._display_chat_history()
 
@@ -60,94 +57,15 @@ class ChatMainUI:
         # System ready
         return True
 
-    def _render_mode_selector(self) -> None:
-        """Render chat mode selector."""
-        # Check if RAG is available
-        qdrant_manager = self.session_manager.get("qdrant_manager")
-        embedding_strategy = self.session_manager.get("embedding_strategy")
-        has_documents = self.session_manager.has_documents()
-
-        can_use_rag = (
-            qdrant_manager is not None
-            and embedding_strategy is not None
-            and has_documents
-        )
-
-        # Create mode options
-        if can_use_rag:
-            mode_options = {
-                "🤖 RAG Mode (with Documents)": "rag",
-                "💬 Chat Mode (LLM Only)": "llm_only",
-            }
-            default_mode = "rag"
-        else:
-            # Only LLM mode available
-            mode_options = {"💬 Chat Mode (LLM Only)": "llm_only"}
-            default_mode = "llm_only"
-
-        # Get current mode from session
-        current_mode = self.session_manager.get("chat_mode", default_mode)
-
-        # Find current index
-        mode_values = list(mode_options.values())
-        try:
-            current_index = mode_values.index(current_mode)
-        except ValueError:
-            current_index = 0
-
-        # Render selector
-        col1, col2 = st.columns([3, 1])
-
-        with col1:
-            selected_mode_label = st.selectbox(
-                "🎯 Chat Mode",
-                options=list(mode_options.keys()),
-                index=current_index,
-                help=(
-                    "**RAG Mode**: Uses retrieved documents to answer questions\n\n"
-                    "**Chat Mode**: Direct conversation with LLM without document retrieval"
-                ),
-                key="mode_selector",
-            )
-
-            # Update session state if changed
-            selected_mode = mode_options[selected_mode_label]
-            if selected_mode != current_mode:
-                self.session_manager.set("chat_mode", selected_mode)
-                st.rerun()
-
-        with col2:
-            # Show status indicator
-            if selected_mode == "rag":
-                st.metric("📚 Status", "RAG Active", help="Using document retrieval")
-            else:
-                st.metric("💭 Status", "Chat Only", help="LLM without retrieval")
-
-        # Show info message about current mode
-        if selected_mode == "rag":
-            st.info(
-                "📖 **RAG Mode Active** - I'll search your documents to provide accurate answers."
-            )
-        else:
-            st.info(
-                "💬 **Chat Mode Active** - I'll answer using my general knowledge "
-                "without searching documents."
-            )
-
     def _display_chat_history(self) -> None:
         """Display chat message history."""
         chat_history = self.session_manager.get("chat_history", [])
 
         if not chat_history:
-            # Show welcome message with status
-            has_docs = self.session_manager.has_documents()
-
-            if not has_docs:
-                st.info(
-                    "💬 **System Ready - LLM Mode**\n\n"
-                    "I'm ready to chat! However, I don't have access to any documents yet.\n\n"
-                    "📁 Upload documents via sidebar for enhanced answers with RAG."
-                )
+            # Show welcome message
+            st.info(
+                "💬 **System Ready - RAG Mode**\n\n"
+            )
             return
 
         # Display chat messages
@@ -190,20 +108,17 @@ class ChatMainUI:
                     images: List[UIImage] = st.session_state.get(
                         "last_response_images", []
                     )
-                    chat_mode = self.session_manager.get(
-                        "chat_mode", "rag"
-                    )  # Default to rag
 
                     # Get route info from session state
                     route = st.session_state.get("last_response_route")
 
                     logger.info(
                         f"After response: images={len(images)}, "
-                        f"chat_mode={chat_mode}, route={route}"
+                        f"route={route}"
                     )
 
-                    # Display route indicator (only in RAG mode)
-                    if route and chat_mode == "rag":
+                    # Display route indicator
+                    if route:
                         if route == "text_only":
                             st.caption("🔤 Query type: **Text Search**")
                         elif route == "image_only":
@@ -213,13 +128,12 @@ class ChatMainUI:
                     st.markdown(response)
 
                     # Display images if available
-                    if images and chat_mode == "rag":
+                    if images:
                         logger.info("Calling _display_response_images")
                         self._display_response_images(images)
                     else:
                         logger.info(
-                            f"Skipping image display: images={bool(images)}, "
-                            f"mode={chat_mode}"
+                            f"Skipping image display: images={bool(images)}"
                         )
 
                     # Save message with images and route to chat history
@@ -265,13 +179,12 @@ class ChatMainUI:
         try:
             api_client = get_api_client()
 
-            selected_mode = self.session_manager.get("chat_mode", "rag")
+            # Always RAG mode
             num_docs = self.session_manager.get("number_docs_retrieval", DEFAULT_NUM_RETRIEVAL)
             score_threshold = self.session_manager.get("score_threshold", DEFAULT_SCORE_THRESHOLD)
 
             result = api_client.chat(
                 query=query,
-                mode=selected_mode,
                 top_k=num_docs,
                 score_threshold=score_threshold,
             )
@@ -319,58 +232,78 @@ class ChatMainUI:
                 )
                 st.markdown("---")
 
-    def _display_response_images(self, images: List[UIImage]) -> None:
+    def _display_response_images(self, images: List[UIImage], captions: List[str] = None) -> None:
         """
         Display images with captions below response.
-
+        
         Args:
-            images: List of UIImage objects with caption, image_path, source_file
+            images: List of UIImage objects or list of image paths (backward compatibility)
+            captions: List of captions if images is list of paths
         """
         import html
+        from pathlib import Path
 
+        # Handle backward compatibility if images is list of strings (paths)
+        if images and isinstance(images[0], str):
+            logger.info("Using backward compatibility for image display")
+            # Convert to UIImage-like objects for display logic
+            image_objs = []
+            for i, path in enumerate(images):
+                caption = captions[i] if captions and i < len(captions) else "Image"
+                # Create dummy UIImage for display
+                image_objs.append(UIImage(
+                    caption=caption,
+                    image_path=path,
+                    score=0.0,
+                    source_file="Unknown"
+                ))
+            images = image_objs
+        
         logger.info(f"Displaying {len(images)} image(s)")
 
         st.markdown("### 📸 Relevant Image")
 
         for i, img in enumerate(images):
             try:
-                logger.info(f"Validating image {i+1}: {img.image_path}")
-                if self._validate_image_file(img.image_path):
+                # Use img.image_path directly
+                image_path = img.image_path
+                
+                logger.info(f"Validating image {i+1}: {image_path}")
+                if self._validate_image_file(image_path):
                     # Security: Sanitize caption to prevent XSS
                     safe_caption = html.escape(img.caption)
 
                     # Display source document info
                     st.caption(f"📁 Source: `{img.source_file}`")
-                    if img.page_number:
+                    if hasattr(img, 'page_number') and img.page_number:
                         st.caption(f"📄 Page: {img.page_number}")
 
                     # Display image with caption
                     st.image(
-                        img.image_path,
+                        image_path,
                         caption=f"📌 {safe_caption}",
                         width=600,
                         output_format="auto",
                     )
-                    logger.info(f"Image displayed successfully: {img.image_path}")
+                    logger.info(f"Image displayed successfully: {image_path}")
 
                     # Show image metadata in expander
                     with st.expander("ℹ️ Image Details", expanded=False):
                         st.text(f"Source: {img.source_file}")
-                        st.text(f"Path: {img.image_path}")
+                        st.text(f"Path: {image_path}")
                         st.text(f"Caption: {safe_caption}")
-                        st.text(f"Score: {img.score:.3f}")
+                        if hasattr(img, 'score'):
+                            st.text(f"Score: {img.score:.3f}")
 
                 else:
-                    from pathlib import Path
-
                     st.error(
-                        f"🖼️ Image not found or invalid: {Path(img.image_path).name}"
+                        f"🖼️ Image not found or invalid: {Path(image_path).name}"
                     )
-                    logger.warning(f"Image validation failed: {img.image_path}")
+                    logger.warning(f"Image validation failed: {image_path}")
 
             except Exception as e:
                 st.error(f"🖼️ Error displaying image: {str(e)}")
-                logger.error(f"Failed to display image {img.image_path}: {e}")
+                logger.error(f"Failed to display image {img.image_path if hasattr(img, 'image_path') else 'unknown'}: {e}")
 
     def _validate_image_file(self, image_path: str) -> bool:
         """Validate if image file is accessible and valid."""

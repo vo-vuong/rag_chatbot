@@ -23,7 +23,7 @@ class ChatResponse:
     """Chat response container."""
 
     response: str
-    route: Optional[str]  # "text_only", "image_only", or None (llm_only)
+    route: Optional[str]  # "text_only", "image_only"
     route_reasoning: Optional[str]
     retrieved_chunks: List[ChunkElement]  # Typed list of chunks
     images: List[ImageElement]  # Single list of image objects (not 3 parallel lists)
@@ -50,7 +50,6 @@ class ChatService:
         self,
         query: str,
         session_id: str,
-        mode: str = "rag",
         top_k: int = 3,
         score_threshold: float = 0.5,
     ) -> ChatResponse:
@@ -60,24 +59,14 @@ class ChatService:
         Args:
             query: User's question
             session_id: Session identifier
-            mode: "rag" or "llm_only"
             top_k: Number of documents to retrieve
             score_threshold: Minimum similarity score
         """
         # Add user message to history
         self._sessions.add_message(session_id, "user", query)
 
-        if mode == "llm_only":
-            response = self._generate_llm_only(query, session_id)
-            result = ChatResponse(
-                response=response,
-                route=None,
-                route_reasoning=None,
-                retrieved_chunks=[],
-                images=[],
-            )
-        else:
-            result = self._generate_rag(query, session_id, top_k, score_threshold)
+        # Always do RAG (Strict Mode)
+        result = self._generate_rag(query, session_id, top_k, score_threshold)
 
         # Add assistant response to history
         self._sessions.add_message(session_id, "assistant", result.response)
@@ -120,9 +109,9 @@ class ChatService:
         chunks = self._rag.search_text(query, top_k, score_threshold)
 
         if not chunks:
-            response = self._generate_llm_only(query, session_id)
+            # Strict RAG: Return not found message if no chunks
             return ChatResponse(
-                response=response + "\n\n*Note: No relevant documents found.*",
+                response="I couldn't find any relevant information in the documents to answer your question.",
                 route="text_only",
                 route_reasoning=reasoning,
                 retrieved_chunks=[],
@@ -199,9 +188,3 @@ class ChatService:
             retrieved_chunks=[],
             images=images,  # Pass typed list directly
         )
-
-    def _generate_llm_only(self, query: str, session_id: str) -> str:
-        """Generate LLM-only response."""
-        history = self._sessions.get_chat_history(session_id)
-        prompt = PromptBuilder.build_chat_prompt(query=query, chat_history=history)
-        return self._llm.generate_content(prompt=prompt)

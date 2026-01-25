@@ -14,7 +14,6 @@ class ChatRequest(BaseModel):
 
     query: str
     session_id: str
-    mode: Literal["rag", "llm_only"] = "rag"
     top_k: int = DEFAULT_NUM_RETRIEVAL
     score_threshold: float = DEFAULT_SCORE_THRESHOLD
 

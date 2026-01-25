@@ -27,7 +27,6 @@ async def chat_query(
         result = chat_service.process_query(
             query=request.query,
             session_id=request.session_id,
-            mode=request.mode,
             top_k=request.top_k,
             score_threshold=request.score_threshold,
         )
@@ -63,7 +62,6 @@ async def chat_query_stream(
             result = chat_service.process_query(
                 query=request.query,
                 session_id=request.session_id,
-                mode=request.mode,
                 top_k=request.top_k,
                 score_threshold=request.score_threshold,
             )

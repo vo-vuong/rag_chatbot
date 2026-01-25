@@ -76,7 +76,6 @@ class SessionManager:
             'llm_model_name': None,  # Model name (e.g., "gpt-4o-mini")
             'system_prompt': None,  # System prompt
             'temperature': 0.2,  # LLM temperature
-            'chat_mode': 'rag',  # 'rag' or 'llm_only'
             # ============================================================
             # VECTOR DATABASE (QDRANT)
             # ============================================================
@@ -121,7 +120,6 @@ class SessionManager:
             'prompt_manager': None,  # PromptManager instance
             'active_system_template': 'system_helpful_assistant',
             'active_rag_template': 'rag_qa_with_history',
-            'active_chat_template': 'chat_conversational',
             'custom_prompts_enabled': False,
         }
 
@@ -240,11 +238,6 @@ class SessionManager:
     def get_active_rag_template(self):
         """Get the active RAG prompt template."""
         template_name = self.get('active_rag_template', 'rag_qa_with_history')
-        return self.get_prompt_template(template_name)
-
-    def get_active_chat_template(self):
-        """Get the active chat prompt template."""
-        template_name = self.get('active_chat_template', 'chat_conversational')
         return self.get_prompt_template(template_name)
 
     # ============================================================

@@ -139,41 +139,6 @@ prompts:
       version: "1.0"
 
   # ============================================================
-  # CHAT PROMPTS - For conversational interactions
-  # ============================================================
-
-  - name: "chat_conversational"
-    category: "chat"
-    description: "Conversational chat without retrieved context"
-    language: "multi"
-    template: |
-      {chat_history}
-
-      User: {query}
-    variables: ["query", "chat_history"]
-    metadata:
-      version: "1.0"
-
-  - name: "chat_with_context"
-    category: "chat"
-    description: "Chat with both history and retrieved context"
-    language: "multi"
-    template: |
-      Conversation history:
-      {chat_history}
-
-      Relevant information from documents:
-      {context}
-
-      User's current question: {query}
-
-      Respond naturally, taking into account both the conversation history and the 
-      retrieved information.
-    variables: ["query", "chat_history", "context"]
-    metadata:
-      version: "1.0"
-
-  # ============================================================
   # ROUTING PROMPTS - For query classification
   # ============================================================
 

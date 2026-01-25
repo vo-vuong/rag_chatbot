@@ -86,22 +86,6 @@ prompts:
       version: "1.0"
       default: true
 
-  - name: "rag_qa_with_sources"
-    category: "rag"
-    description: "RAG with explicit source attribution"
-    language: "multi"
-    template: |
-      Context from documents:
-      {context}
-
-      Question: {query}
-
-      Answer the question and cite which document sections support your answer.
-      Format: Provide your answer, then add "Source: [Document X]" for each claim.
-    variables: ["context", "query"]
-    metadata:
-      version: "1.0"
-
   # ============================================================
   # IMAGE RAG PROMPTS - For image-based question answering
   # ============================================================

@@ -19,6 +19,8 @@ All retrieval parameters use centralized constants from `config/constants.py`:
 | `DEFAULT_SCORE_THRESHOLD`       | `0.7`         | Minimum similarity score for text search  |
 | `DEFAULT_IMAGE_NUM_RETRIEVAL`   | `1`           | Number of images to retrieve              |
 | `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.6`         | Minimum similarity score for image search |
+| `RERANK_TOP_K`                  | `30`          | Initial documents for Reranking           |
+| `FINAL_TOP_K`                   | `5`           | Final documents after Reranking           |
 
 These defaults are used in:
 
@@ -568,6 +570,7 @@ The API uses environment variables for configuration (via `.env` file):
 | Variable         | Default     | Description               |
 | ---------------- | ----------- | ------------------------- |
 | `OPENAI_API_KEY` | -           | OpenAI API key (required) |
+| `COHERE_API_KEY` | -           | Cohere API key (optional) |
 | `QDRANT_HOST`    | `localhost` | Qdrant server host        |
 | `QDRANT_PORT`    | `6333`      | Qdrant server port        |
 

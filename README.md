@@ -5,6 +5,7 @@ A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI back
 ## Key Features
 
 - **OpenAI Integration**: GPT-4o, GPT-4o Mini
+- **Reranking**: Cohere Rerank API (Multilingual v3.0) for high-precision retrieval
 - **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
 - **Token-Aware Chunking**: Docling HybridChunker
 - **Smart Processing**: PDF/DOCX via Docling, streaming CSV pipeline, OCR with EasyOCR
@@ -88,6 +89,7 @@ streamlit run app.py
 
 ```bash
 OPENAI_API_KEY=sk-...
+COHERE_API_KEY=... (Optional - for Reranking)
 QDRANT_HOST=localhost
 QDRANT_PORT=6333
 ```
@@ -107,17 +109,24 @@ QDRANT_PORT=6333
                                               │
                     ┌─────────────────────────┼─────────────────────────┐
                     ▼                         ▼                         ▼
-             ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
-             │ChatService  │          │RAGService   │          │UploadSvc    │
-             │(Orchestrate)│          │(Retrieval)  │          │(2-Step)     │
-             └─────────────┘          └─────────────┘          └─────────────┘
+                    ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
+                    │ChatService  │          │RAGService   │          │UploadSvc    │
+                    │(Orchestrate)│          │(Retrieval + │          │(2-Step)     │
+                    │             │          │ Reranking)  │          │             │
+                    └─────────────┘          └─────────────┘          └─────────────┘
                     │                        │                        │
-        ┌───────────┴───────────┐            │            ┌───────────┴───────────┐
-        ▼                       ▼            ▼            ▼                       ▼
- ┌─────────────┐         ┌─────────────┐  ┌──────────────────┐          ┌─────────────┐
- │QueryRouter  │         │SessionSvc   │  │DocumentProcessor │          │ Qdrant DB   │
- │(LLM-based)  │         │(State)      │  │(Docling+Vision)  │          │(Text+Image) │
- └─────────────┘         └─────────────┘  └──────────────────┘          └─────────────┘
+                    ┌───────────┴───────────┐            │            ┌───────────┴───────────┐
+                    ▼                       ▼            ▼            ▼                       ▼
+                    ┌─────────────┐         ┌─────────────┐  ┌──────────────────┐          ┌─────────────┐
+                    │QueryRouter  │         │SessionSvc   │  │DocumentProcessor │          │ Qdrant DB   │
+                    │(LLM-based)  │         │(State)      │  │(Docling+Vision)  │          │(Text+Image) │
+                    └─────────────┘         └─────────────┘  └──────────────────┘          └─────────────┘
+                                             ▲
+                                             │
+                                      ┌─────────────┐
+                                      │Cohere Rerank│
+                                      │(API)        │
+                                      └─────────────┘
 ```
 
 ### API Endpoints

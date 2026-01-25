@@ -193,6 +193,15 @@ CSV_UI_MESSAGES = {
 # API KEYS
 # ============================================================
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+COHERE_API_KEY = os.getenv('COHERE_API_KEY', '')
+
+# ============================================================
+# RERANKING CONFIGURATION
+# ============================================================
+COHERE_MODEL = "rerank-multilingual-v3.0"
+RERANK_TOP_K = 30  # Number of docs to fetch from vector DB for reranking
+FINAL_TOP_K = 5    # Number of docs to return after reranking
+
 
 # ============================================================
 # API CONFIGURATION

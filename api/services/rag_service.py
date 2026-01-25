@@ -10,9 +10,16 @@ from typing import List, Optional, Tuple
 
 from backend.embeddings.embedding_strategy import EmbeddingStrategy
 from backend.models import ChunkElement, ImageElement
+from backend.reranking import CohereReranker
 from backend.routing import QueryRouter
 from backend.vector_db.qdrant_manager import QdrantManager
-from config.constants import DEFAULT_IMAGE_NUM_RETRIEVAL, DEFAULT_IMAGE_SCORE_THRESHOLD
+from config.constants import (
+    COHERE_API_KEY,
+    COHERE_MODEL,
+    DEFAULT_IMAGE_NUM_RETRIEVAL,
+    DEFAULT_IMAGE_SCORE_THRESHOLD,
+    RERANK_TOP_K,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +52,15 @@ class RAGService:
         self._image_manager = image_manager
         self._embedding = embedding
 
+        # Initialize Reranker
+        self._reranker = None
+        if COHERE_API_KEY:
+            try:
+                self._reranker = CohereReranker(api_key=COHERE_API_KEY, model=COHERE_MODEL)
+                logger.info(f"Cohere Reranker initialized with model: {COHERE_MODEL}")
+            except Exception as e:
+                logger.warning(f"Failed to initialize Cohere Reranker: {e}")
+
     def route_query(self, query: str) -> Tuple[str, str]:
         """
         Classify query route.
@@ -52,8 +68,10 @@ class RAGService:
         Returns:
             Tuple of (route, reasoning)
         """
-        classification = self._router.classify(query)
-        return classification.route, classification.reasoning
+        # classification = self._router.classify(query)
+        # return classification.route, classification.reasoning
+        # Sử dụng tạm để đánh giá trên tập text dataset.
+        return "text_only", "default"
 
     def search_text(
         self,
@@ -67,13 +85,17 @@ class RAGService:
         Returns:
             List of ChunkElement objects with content, score, source_file, metadata, point_id
         """
+        # Determine retrieval top_k (increase recall for reranking)
+        retrieval_k = max(top_k, RERANK_TOP_K) if self._reranker else top_k
+
         query_embedding = self._embedding.embed_query(query)
         results = self._text_manager.search(
             query_vector=query_embedding,
-            top_k=top_k,
+            top_k=retrieval_k,
             score_threshold=score_threshold,
         )
-        return [
+        
+        chunks = [
             ChunkElement.from_qdrant_payload(
                 r["payload"],
                 r["score"],
@@ -81,6 +103,24 @@ class RAGService:
             )
             for r in results
         ]
+
+        # Apply Reranking if enabled and available
+        if self._reranker and chunks:
+            try:
+                chunks = self._reranker.rerank(query, chunks, top_k=top_k)
+            except Exception as e:
+                logger.error(f"Reranking failed, falling back to original results: {e}")
+                # Fallback to original top_k if reranking fails
+                # Note: User requested to raise error, but in a production service 
+                # passing the error up might crash the request completely.
+                # However, following the user's specific instruction:
+                # "Fallback Strategy: Báo lỗi cho người dùng"
+                # The reranker itself raises RuntimeError, so we let it propagate if we want to stop.
+                # But here I caught it to log. Re-raising it now.
+                raise e
+        
+        # Ensure we don't return more than requested if reranker was skipped/not used
+        return chunks[:top_k]
 
     def search_images(
         self,

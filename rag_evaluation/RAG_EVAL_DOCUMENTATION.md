@@ -17,6 +17,9 @@ conda activate rag_chatbot && python -m rag_evaluation --metric hit --k 5
 # Run Recall@K with verbose output
 conda activate rag_chatbot && python -m rag_evaluation --metric recall --k 10 -v
 
+# Run with custom delay (e.g., for strict rate limits)
+conda activate rag_chatbot && python -m rag_evaluation --metric all_retrieval --k 5 --delay 10
+
 # Run all metrics (retrieval + generation)
 conda activate rag_chatbot && python -m rag_evaluation --metric all --k 5
 
@@ -31,6 +34,19 @@ conda activate rag_chatbot && python -m rag_evaluation --metric faithfulness --k
 
 # List available metrics
 conda activate rag_chatbot && python -m rag_evaluation --list-metrics
+```
+
+## Rate Limits and Delays
+
+If you are using trial API keys (e.g., Cohere), you may encounter rate limits. The framework automatically handles this for retrieval metrics by adding a delay between queries.
+
+- Default delay is **7.0 seconds** (Safe for Cohere Trial re-ranking tasks, limited to 10 requests/minute.).
+- Delay is **disabled** (0.0s) for generation metrics as they are naturally slower.
+- You can override the delay with `--delay`:
+
+```bash
+# Increase delay for very strict rate limits
+python -m rag_evaluation --metric hit --k 5 --delay 10
 ```
 
 ## Available Metrics
@@ -74,6 +90,7 @@ python -m rag_evaluation [OPTIONS]
 | `-v, --verbose` | Print detailed per-query results | off |
 | `-o, --output` | Custom output Excel file path | auto-generated |
 | `--no-export` | Don't export results to Excel | off |
+| `--delay` | Delay in seconds between queries | `7.0` |
 | `--list-metrics` | List available metrics and exit | - |
 | `--model` | LLM model for generation metrics | `gpt-4o-mini` |
 | `--embedding-model` | Embedding model for response_relevancy | `text-embedding-3-small` |

@@ -6,6 +6,7 @@ Orchestrates evaluation of generation quality metrics using the chat API.
 
 import asyncio
 import logging
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -45,6 +46,7 @@ class GenerationEvaluator:
         api_base_url: Optional[str] = None,
         output_dir: Union[str, Path] = DEFAULT_OUTPUT_DIR,
         limit: Optional[int] = None,
+        delay: float = 0.0,
     ):
         """
         Initialize the generation evaluator.
@@ -54,10 +56,12 @@ class GenerationEvaluator:
             api_base_url: Base URL for RAG API
             output_dir: Directory for output files
             limit: Optional limit on number of queries
+            delay: Time to sleep (in seconds) between queries
         """
         self.test_data_path = Path(test_data_path)
         self.output_dir = Path(output_dir)
         self.limit = limit
+        self.delay = delay
 
         self.data_loader = TestDataLoader(self.test_data_path, limit=limit)
 
@@ -226,6 +230,10 @@ class GenerationEvaluator:
         requires_response = getattr(metric, "requires_response", True)
 
         for idx, query, ground_truth_ids, metadata in self.data_loader.iter_queries():
+            # Add delay if needed
+            if self.delay > 0 and processed > 0:
+                time.sleep(self.delay)
+
             processed += 1
             ground_truth_answer = metadata.get("ground_truth_answer", "")
 
@@ -306,6 +314,7 @@ def run_faithfulness_evaluation(
     model_name: str = "gpt-4o-mini",
     export: bool = True,
     output_path: Optional[Path] = None,
+    delay: float = 0.0,
 ) -> Dict[str, Any]:
     """
     Convenience function to run Faithfulness evaluation.
@@ -328,6 +337,7 @@ def run_faithfulness_evaluation(
         test_data_path=test_data_path or DEFAULT_TEST_DATA_PATH,
         api_base_url=api_base_url,
         limit=limit,
+        delay=delay,
     )
 
     return evaluator.run(

@@ -132,6 +132,13 @@ Available generation metrics: {', '.join(GENERATION_METRICS)}
     )
 
     parser.add_argument(
+        "--delay",
+        type=float,
+        default=7.0,
+        help="Delay in seconds between queries to avoid rate limits (default: 0.0)",
+    )
+
+    parser.add_argument(
         "-v", "--verbose",
         action="store_true",
         help="Print detailed per-query results",
@@ -249,6 +256,7 @@ def main() -> int:
                 test_data_path=test_data_path,
                 api_base_url=args.api_url,
                 limit=args.limit,
+                delay=0.0,  # No delay for generation metrics as they are slow enough
             )
 
             # Collect all generation results for combined export
@@ -322,6 +330,7 @@ def main() -> int:
                 api_base_url=args.api_url,
                 output_dir=DEFAULT_OUTPUT_DIR,
                 limit=args.limit,
+                delay=args.delay,
             )
 
             results = evaluator.run(

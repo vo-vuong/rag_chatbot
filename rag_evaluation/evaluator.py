@@ -5,6 +5,7 @@ Coordinates data loading, API calls, metric calculation, and result export.
 """
 
 import logging
+import time
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
@@ -53,6 +54,7 @@ class Evaluator:
         api_base_url: Optional[str] = None,
         output_dir: Union[str, Path] = DEFAULT_OUTPUT_DIR,
         limit: Optional[int] = None,
+        delay: float = 0.0,
     ):
         """
         Initialize the evaluator.
@@ -62,10 +64,12 @@ class Evaluator:
             api_base_url: Base URL for RAG API (uses default if None)
             output_dir: Directory for output files
             limit: Optional limit on number of queries to evaluate
+            delay: Time to sleep (in seconds) between queries to avoid rate limits
         """
         self.test_data_path = Path(test_data_path)
         self.output_dir = Path(output_dir)
         self.limit = limit
+        self.delay = delay
 
         # Initialize components
         self.data_loader = TestDataLoader(self.test_data_path, limit=limit)
@@ -169,6 +173,10 @@ class Evaluator:
         processed = 0
 
         for idx, query, ground_truth_ids, metadata in self.data_loader.iter_queries():
+            # Add delay to avoid hitting rate limits (e.g. Cohere trial key)
+            if self.delay > 0 and processed > 0:
+                time.sleep(self.delay)
+
             # Single API call per query
             retrieved_ids = self.api_client.search(
                 query=query,
@@ -264,6 +272,7 @@ def run_evaluation(
     limit: Optional[int] = None,
     verbose: bool = False,
     output_path: Optional[Path] = None,
+    delay: float = 0.0,
 ) -> Dict[str, EvaluationResult]:
     """
     Convenience function to run evaluation.
@@ -285,6 +294,7 @@ def run_evaluation(
         test_data_path=test_data_path or DEFAULT_TEST_DATA_PATH,
         api_base_url=api_base_url,
         limit=limit,
+        delay=delay,
     )
 
     return evaluator.run(

@@ -50,8 +50,13 @@ class AgentService:
         self._workflow_type = workflow_type
         self._config = config or AgentConfig.from_env()
 
-        # In-memory checkpointer (can be replaced with SQLite/Redis)
-        self._checkpointer = MemorySaver()
+        # Checkpointer for conversation persistence (can be disabled for testing)
+        if self._config.enable_checkpointing:
+            self._checkpointer = MemorySaver()
+            logger.info("Memory checkpointing enabled")
+        else:
+            self._checkpointer = None
+            logger.info("Memory checkpointing disabled (stateless mode)")
 
         # Create graph
         self._graph = create_graph(

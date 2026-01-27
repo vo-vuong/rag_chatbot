@@ -10,6 +10,8 @@ This module provides tools to evaluate:
 
 ## Quick Start
 
+**Important**: Before running evaluation, set `AGENT_MEMORY_ENABLED=false` in `.env` and restart the API server. This ensures each query is evaluated independently without conversation history accumulation.
+
 ```bash
 # Run Hit@K evaluation with k=5
 conda activate rag_chatbot && python -m rag_evaluation --metric hit --k 5

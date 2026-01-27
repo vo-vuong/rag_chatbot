@@ -601,12 +601,13 @@ print(save_response.json())
 
 The API uses environment variables for configuration (via `.env` file):
 
-| Variable         | Default     | Description               |
-| ---------------- | ----------- | ------------------------- |
-| `OPENAI_API_KEY` | -           | OpenAI API key (required) |
-| `COHERE_API_KEY` | -           | Cohere API key (optional) |
-| `QDRANT_HOST`    | `localhost` | Qdrant server host        |
-| `QDRANT_PORT`    | `6333`      | Qdrant server port        |
+| Variable              | Default     | Description                                      |
+| --------------------- | ----------- | ------------------------------------------------ |
+| `OPENAI_API_KEY`      | -           | OpenAI API key (required)                        |
+| `COHERE_API_KEY`      | -           | Cohere API key (optional)                        |
+| `QDRANT_HOST`         | `localhost` | Qdrant server host                               |
+| `QDRANT_PORT`         | `6333`      | Qdrant server port                               |
+| `AGENT_MEMORY_ENABLED`| `true`      | Enable conversation memory (set `false` for eval)|
 
 ---
 

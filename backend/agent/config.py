@@ -2,6 +2,7 @@
 Agent configuration settings.
 """
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 
@@ -42,8 +43,13 @@ class AgentConfig:
     @classmethod
     def from_env(cls) -> "AgentConfig":
         """Create config from environment variables."""
+        # Read AGENT_MEMORY_ENABLED (default: True for production)
+        memory_enabled_str = os.getenv("AGENT_MEMORY_ENABLED", "true").lower()
+        enable_checkpointing = memory_enabled_str in ("true", "1", "yes")
+
         return cls(
             model=DEFAULT_LLM_MODEL,
             default_top_k=DEFAULT_NUM_RETRIEVAL,
             default_score_threshold=DEFAULT_SCORE_THRESHOLD,
+            enable_checkpointing=enable_checkpointing,
         )

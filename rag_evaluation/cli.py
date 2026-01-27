@@ -22,6 +22,7 @@ Usage:
 
 import argparse
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -207,6 +208,19 @@ def main() -> int:
 
     setup_logging(args.verbose)
     logger = logging.getLogger(__name__)
+
+    # Check if agent memory is enabled - stop evaluation as it affects results
+    memory_enabled_str = os.getenv("AGENT_MEMORY_ENABLED", "true").lower()
+    if memory_enabled_str in ("true", "1", "yes"):
+        print("\n" + "!" * 70)
+        print("ERROR: AGENT_MEMORY_ENABLED=true")
+        print("Conversation memory is ENABLED. This affects evaluation results")
+        print("as queries will accumulate context from previous queries.")
+        print("")
+        print("To run evaluation, set AGENT_MEMORY_ENABLED=false in .env")
+        print("then restart the API server.")
+        print("!" * 70 + "\n")
+        return 1
 
     # Resolve test data path
     test_data_path = Path(args.test_data) if args.test_data else DEFAULT_TEST_DATA_PATH

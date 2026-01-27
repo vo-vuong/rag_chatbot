@@ -1,6 +1,6 @@
 # RAG Evaluation Framework
 
-A modular, extensible framework for evaluating RAG performance using retrieval and generation metrics.
+A modular, extensible framework for evaluating RAG performance using retrieval and generation metrics. **Generation metrics now leverage LangGraph-powered agentic RAG via `/chat/query` endpoint.**
 
 ## Overview
 
@@ -333,17 +333,17 @@ Faithfulness = (Claims supported by context) / (Total claims in response)
 
 - **RAGAS library**: `pip install ragas`
 - **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
-- **RAG API running**: The `/api/v1/chat/query` endpoint must be available
+- **RAG API running**: The `/api/v1/chat/query` endpoint must be available (powered by LangGraph agent)
 
 ### Inputs (from API)
 
 | Input | Source | Description |
 |-------|--------|-------------|
 | `user_input` | Test data `Query` column | The user's question |
-| `response` | API `response` field | LLM-generated answer |
-| `retrieved_contexts` | API `retrieved_chunks[].text` | Context texts |
+| `response` | API `response` field | LLM-generated answer (via LangGraph agent) |
+| `retrieved_contexts` | API `retrieved_chunks[].text` | Context texts (from retrieve_documents tool) |
 
-**Note**: Faithfulness does NOT require `Ground_truth_answer` from test data.
+**Note**: Faithfulness does NOT require `Ground_truth_answer` from test data. The `/chat/query` endpoint uses LangGraph ReAct workflow with automatic retrieval.
 
 ## Context Precision Metric Details
 
@@ -452,14 +452,14 @@ F1 = TP / (TP + 0.5 × (FP + FN))
 - **RAGAS library**: `pip install ragas`
 - **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
 - **Ground truth answer**: Requires `Ground_truth_answer` column in test data
-- **RAG API running**: The `/api/v1/chat/query` endpoint must be available
+- **RAG API running**: The `/api/v1/chat/query` endpoint must be available (powered by LangGraph agent)
 
 ### Inputs
 
 | Input | Source | Description |
 |-------|--------|-------------|
 | `user_input` | Test data `Query` column | The user's question |
-| `response` | API `/chat/query` response | LLM-generated answer |
+| `response` | API `/chat/query` response | LLM-generated answer (via LangGraph agent) |
 | `reference` | Test data `Ground_truth_answer` column | Expected correct answer |
 
 ### Interpretation

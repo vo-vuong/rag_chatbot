@@ -51,7 +51,7 @@ class ChatService:
         query: str,
         session_id: str,
         top_k: int = 3,
-        score_threshold: float = 0.5,
+        score_threshold: float = 0.7,
     ) -> ChatResponse:
         """
         Process chat query. Main entry point.

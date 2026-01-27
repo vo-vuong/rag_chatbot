@@ -157,7 +157,7 @@ class StreamlitAPIClient:
         self,
         query: str,
         top_k: int = 3,
-        score_threshold: float = 0.5,
+        score_threshold: float = 0.7,
     ) -> APIResponse:
         """Send chat query to API (synchronous)."""
         response = self._client.post(
@@ -203,7 +203,7 @@ class StreamlitAPIClient:
         self,
         query: str,
         top_k: int = 3,
-        score_threshold: float = 0.5,
+        score_threshold: float = 0.7,
     ) -> Iterator[StreamEvent]:
         """Send chat query and stream response (SSE)."""
         with self._client.stream(
@@ -233,7 +233,7 @@ class StreamlitAPIClient:
         query: str,
         collection_type: str = "text",
         top_k: int = 3,
-        score_threshold: float = 0.5,
+        score_threshold: float = 0.7,
     ) -> dict:
         """Search RAG collections without generation."""
         response = self._client.post(

@@ -7,6 +7,8 @@ from api.services.chat_service import ChatService
 from api.services.rag_service import RAGService
 from api.services.session_service import SessionService
 from api.services.upload_service import UploadService
+from backend.agent.config import WorkflowType
+from backend.agent.service import AgentService
 from backend.document_processor import DocumentProcessor
 from backend.embeddings.openai_embeddings import OpenAIEmbeddingStrategy
 from backend.llms.openai_llm import OpenAILLM
@@ -18,6 +20,7 @@ _session_service: Optional[SessionService] = None
 _rag_service: Optional[RAGService] = None
 _chat_service: Optional[ChatService] = None
 _upload_service: Optional[UploadService] = None
+_agent_service: Optional[AgentService] = None
 
 
 def get_session_service() -> SessionService:
@@ -93,19 +96,6 @@ def get_rag_service() -> RAGService:
     return _rag_service
 
 
-def get_chat_service() -> ChatService:
-    """Get or create ChatService singleton."""
-    global _chat_service
-    if _chat_service is None:
-        settings = get_settings()
-        _chat_service = ChatService(
-            llm=get_llm(settings),
-            rag_service=get_rag_service(),
-            session_service=get_session_service(),
-        )
-    return _chat_service
-
-
 def get_upload_service() -> UploadService:
     """Get or create UploadService singleton."""
     global _upload_service
@@ -117,3 +107,17 @@ def get_upload_service() -> UploadService:
             embedding=get_embedding(settings),
         )
     return _upload_service
+
+
+def get_agent_service() -> AgentService:
+    """Get or create AgentService singleton (LangGraph-based)."""
+    global _agent_service
+    if _agent_service is None:
+        settings = get_settings()
+        _agent_service = AgentService(
+            rag_service=get_rag_service(),
+            openai_api_key=settings.openai_api_key,
+            model=settings.llm_model,
+            workflow_type=WorkflowType.AGENTIC_RAG,
+        )
+    return _agent_service

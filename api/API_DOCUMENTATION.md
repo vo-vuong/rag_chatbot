@@ -8,6 +8,7 @@ API documentation for the RAG Chatbot backend service.
 - **API Prefix**: `/api/v1`
 - **Version**: `1.0.0`
 - **Content-Type**: `application/json` (except multipart/form-data for upload preview)
+- **Architecture**: LangGraph-based Agentic RAG with ReAct workflow
 
 ### Default Configuration
 
@@ -18,7 +19,7 @@ All retrieval parameters use centralized constants from `config/constants.py`:
 | `DEFAULT_NUM_RETRIEVAL`         | `5`           | Number of text chunks to retrieve         |
 | `DEFAULT_SCORE_THRESHOLD`       | `0.7`         | Minimum similarity score for text search  |
 | `DEFAULT_IMAGE_NUM_RETRIEVAL`   | `1`           | Number of images to retrieve              |
-| `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.6`         | Minimum similarity score for image search |
+| `DEFAULT_IMAGE_SCORE_THRESHOLD` | `0.7`         | Minimum similarity score for image search |
 | `RERANK_TOP_K`                  | `30`          | Initial documents for Reranking           |
 | `FINAL_TOP_K`                   | `5`           | Final documents after Reranking           |
 
@@ -33,14 +34,15 @@ To change defaults globally, modify values in `config/constants.py`.
 
 ### Endpoints Summary
 
-| Endpoint                    | Method | Description                         |
-| --------------------------- | ------ | ----------------------------------- |
-| `/api/v1/health`            | GET    | Health check with Qdrant status     |
-| `/api/v1/chat/query`        | POST   | Synchronous chat with RAG           |
-| `/api/v1/chat/query/stream` | POST   | SSE streaming chat                  |
-| `/api/v1/rag/search`        | POST   | Vector search without LLM           |
-| `/api/v1/upload/preview`    | POST   | Process document and return preview |
-| `/api/v1/upload/save`       | POST   | Save processed chunks to Qdrant     |
+| Endpoint                       | Method | Description                         |
+| ------------------------------ | ------ | ----------------------------------- |
+| `/api/v1/health`               | GET    | Health check with Qdrant status     |
+| `/api/v1/chat/query`           | POST   | LangGraph agent chat with RAG       |
+| `/api/v1/chat/query/stream`    | POST   | SSE streaming chat via LangGraph    |
+| `/api/v1/chat/history/{id}`    | GET    | Get conversation history            |
+| `/api/v1/rag/search`           | POST   | Vector search without LLM           |
+| `/api/v1/upload/preview`       | POST   | Process document and return preview |
+| `/api/v1/upload/save`          | POST   | Save processed chunks to Qdrant     |
 
 ## Endpoints
 
@@ -78,15 +80,16 @@ curl -X GET "http://localhost:8000/api/v1/health"
 
 ---
 
-### 2. Chat Query (Synchronous)
+### 2. Chat Query (Synchronous) - LangGraph Agent
 
-Process a chat query and return complete response.
+Process a chat query through LangGraph agent with tool-calling capabilities.
 
 | Property   | Value                |
 | ---------- | -------------------- |
 | **Method** | `POST`               |
 | **Path**   | `/api/v1/chat/query` |
 | **Auth**   | None                 |
+| **Backend**| LangGraph AgentService (ReAct workflow) |
 
 #### Request Body
 
@@ -151,9 +154,9 @@ curl -X POST "http://localhost:8000/api/v1/chat/query" \
 
 ---
 
-### 3. Chat Query (Streaming)
+### 3. Chat Query (Streaming) - LangGraph Agent
 
-Process a chat query with Server-Sent Events (SSE) streaming.
+Process a chat query with Server-Sent Events (SSE) streaming through LangGraph agent.
 
 | Property          | Value                       |
 | ----------------- | --------------------------- |
@@ -226,6 +229,37 @@ eventSource.onmessage = (event) => {
       break;
   }
 };
+```
+
+---
+
+### 3.5 Chat History
+
+Get conversation history for a session.
+
+| Property   | Value                          |
+| ---------- | ------------------------------ |
+| **Method** | `GET`                          |
+| **Path**   | `/api/v1/chat/history/{session_id}` |
+| **Auth**   | None                           |
+
+#### Example Request
+
+```bash
+curl -X GET "http://localhost:8000/api/v1/chat/history/user-123-session-1"
+```
+
+#### Example Response
+
+```json
+{
+  "session_id": "user-123-session-1",
+  "messages": [
+    {"role": "human", "content": "What is machine learning?"},
+    {"role": "assistant", "content": "Machine learning is..."}
+  ],
+  "message_count": 2
+}
 ```
 
 ---

@@ -101,7 +101,7 @@ DEFAULT_SCORE_THRESHOLD = 0.7
 
 # Image retrieval defaults
 DEFAULT_IMAGE_NUM_RETRIEVAL = 1
-DEFAULT_IMAGE_SCORE_THRESHOLD = 0.6
+DEFAULT_IMAGE_SCORE_THRESHOLD = 0.7
 
 # ============================================================
 # DATA SOURCES

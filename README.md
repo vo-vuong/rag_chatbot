@@ -1,9 +1,10 @@
 # RAG Chatbot
 
-A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and Streamlit frontend enabling intelligent document Q&A through Docling-powered processing (PDF/DOCX), multimodal AI retrieval, and token-aware chunking.
+A production-ready Retrieval-Augmented Generation (RAG) system with FastAPI backend and Streamlit frontend enabling intelligent document Q&A through Docling-powered processing (PDF/DOCX), multimodal AI retrieval, and token-aware chunking. **Powered by LangGraph agentic workflow with ReAct pattern.**
 
 ## Key Features
 
+- **LangGraph Agent**: Agentic RAG with ReAct workflow, tool-calling, and session persistence
 - **OpenAI Integration**: GPT-4o, GPT-4o Mini
 - **Reranking**: Cohere Rerank API (Multilingual v3.0) for high-precision retrieval
 - **Multimodal Search**: Dual-collection retrieval (text + images) with GPT-4o Mini Vision AI captioning
@@ -109,36 +110,37 @@ QDRANT_PORT=6333
                                               │
                     ┌─────────────────────────┼─────────────────────────┐
                     ▼                         ▼                         ▼
-                    ┌─────────────┐          ┌─────────────┐          ┌─────────────┐
-                    │ChatService  │          │RAGService   │          │UploadSvc    │
-                    │(Orchestrate)│          │(Retrieval + │          │(2-Step)     │
-                    │             │          │ Reranking)  │          │             │
-                    └─────────────┘          └─────────────┘          └─────────────┘
+          ┌─────────────────┐       ┌─────────────┐          ┌─────────────┐
+          │  AgentService   │       │RAGService   │          │UploadSvc    │
+          │  (LangGraph     │       │(Retrieval + │          │(2-Step)     │
+          │   ReAct Agent)  │       │ Reranking)  │          │             │
+          └─────────────────┘       └─────────────┘          └─────────────┘
                     │                        │                        │
-                    ┌───────────┴───────────┐            │            ┌───────────┴───────────┐
-                    ▼                       ▼            ▼            ▼                       ▼
-                    ┌─────────────┐         ┌─────────────┐  ┌──────────────────┐          ┌─────────────┐
-                    │QueryRouter  │         │SessionSvc   │  │DocumentProcessor │          │ Qdrant DB   │
-                    │(LLM-based)  │         │(State)      │  │(Docling+Vision)  │          │(Text+Image) │
-                    └─────────────┘         └─────────────┘  └──────────────────┘          └─────────────┘
-                                             ▲
-                                             │
-                                      ┌─────────────┐
-                                      │Cohere Rerank│
-                                      │(API)        │
-                                      └─────────────┘
+          ┌─────────┴─────────┐              │            ┌───────────┴───────────┐
+          ▼                   ▼              ▼            ▼                       ▼
+    ┌───────────┐       ┌───────────┐  ┌─────────────┐  ┌──────────────────┐  ┌─────────────┐
+    │LangGraph  │       │Retrieval  │  │SessionSvc   │  │DocumentProcessor │  │ Qdrant DB   │
+    │StateGraph │       │Tool       │  │(State)      │  │(Docling+Vision)  │  │(Text+Image) │
+    └───────────┘       └───────────┘  └─────────────┘  └──────────────────┘  └─────────────┘
+                                        ▲
+                                        │
+                                 ┌─────────────┐
+                                 │Cohere Rerank│
+                                 │(API)        │
+                                 └─────────────┘
 ```
 
 ### API Endpoints
 
-| Endpoint                    | Method | Description                               |
-| --------------------------- | ------ | ----------------------------------------- |
-| `/api/v1/chat/query`        | POST   | Synchronous chat with RAG                 |
-| `/api/v1/chat/query/stream` | POST   | SSE streaming chat                        |
-| `/api/v1/rag/search`        | POST   | Vector search without LLM                 |
-| `/api/v1/upload/preview`    | POST   | Process file and return preview (no save) |
-| `/api/v1/upload/save`       | POST   | Save processed chunks/images to Qdrant    |
-| `/api/v1/health`            | GET    | Health check with Qdrant status           |
+| Endpoint                       | Method | Description                               |
+| ------------------------------ | ------ | ----------------------------------------- |
+| `/api/v1/chat/query`           | POST   | LangGraph agent chat with RAG             |
+| `/api/v1/chat/query/stream`    | POST   | SSE streaming chat via LangGraph          |
+| `/api/v1/chat/history/{id}`    | GET    | Get conversation history                  |
+| `/api/v1/rag/search`           | POST   | Vector search without LLM                 |
+| `/api/v1/upload/preview`       | POST   | Process file and return preview (no save) |
+| `/api/v1/upload/save`          | POST   | Save processed chunks/images to Qdrant    |
+| `/api/v1/health`               | GET    | Health check with Qdrant status           |
 
 ## Development
 
@@ -148,6 +150,7 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 
 - `api/`: FastAPI REST API layer (routers, services, models)
 - `backend/`: Core processing engine (document processing, vision, embeddings, LLMs)
+  - `backend/agent/`: LangGraph agent module (workflows, tools, nodes)
 - `ui/`: Streamlit web interface and API client
 - `config/`: Application constants, logging, and prompts
 - `rag_evaluation/`: RAG evaluation framework (Hit@K, Recall@K, Precision@K, F1@K, MRR@K, Faithfulness, Response Relevancy, Context Precision, Context Recall, Answer Correctness)
@@ -156,14 +159,15 @@ The project uses a modular architecture with Strategy, Factory, Singleton, and D
 
 - **Strategy Pattern**: Document processors, embeddings, LLMs
 - **Singleton Pattern**: SessionManager, PromptManager
-- **Factory Pattern**: EmbeddingFactory, LLMFactory
+- **Factory Pattern**: EmbeddingFactory, LLMFactory, Graph factory
 - **Dependency Injection**: FastAPI dependencies
 - **Lazy Initialization**: Docling converter, Image captioner
+- **ReAct Pattern**: LangGraph agent workflow (Agent → Tools → Agent → END)
 
 ## Technology Stack
 
 **Core**: Python 3.11+, FastAPI 0.128+, Streamlit 1.29+, Qdrant 1.15.0
-**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), LangChain 0.1+
+**AI/ML**: OpenAI (GPT-4o/embeddings/Vision), LangChain 0.1+, LangGraph 0.2+
 **Processing**: Docling 2.0+, EasyOCR, pandas, Pillow, imagehash, tiktoken
 **HTTP**: httpx (async-capable), uvicorn ASGI server
 **Infrastructure**: Docker Compose, conda environment management

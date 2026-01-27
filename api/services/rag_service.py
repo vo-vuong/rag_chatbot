@@ -56,7 +56,9 @@ class RAGService:
         self._reranker = None
         if COHERE_API_KEY:
             try:
-                self._reranker = CohereReranker(api_key=COHERE_API_KEY, model=COHERE_MODEL)
+                self._reranker = CohereReranker(
+                    api_key=COHERE_API_KEY, model=COHERE_MODEL
+                )
                 logger.info(f"Cohere Reranker initialized with model: {COHERE_MODEL}")
             except Exception as e:
                 logger.warning(f"Failed to initialize Cohere Reranker: {e}")
@@ -76,8 +78,8 @@ class RAGService:
     def search_text(
         self,
         query: str,
-        top_k: int = 3,
-        score_threshold: float = 0.5,
+        top_k: int = 5,
+        score_threshold: float = 0.7,
     ) -> List[ChunkElement]:
         """
         Search text collection.
@@ -94,12 +96,12 @@ class RAGService:
             top_k=retrieval_k,
             score_threshold=score_threshold,
         )
-        
+
         chunks = [
             ChunkElement.from_qdrant_payload(
                 r["payload"],
                 r["score"],
-                point_id=r["id"]  # Already an integer from Qdrant
+                point_id=r["id"],  # Already an integer from Qdrant
             )
             for r in results
         ]
@@ -111,14 +113,14 @@ class RAGService:
             except Exception as e:
                 logger.error(f"Reranking failed, falling back to original results: {e}")
                 # Fallback to original top_k if reranking fails
-                # Note: User requested to raise error, but in a production service 
+                # Note: User requested to raise error, but in a production service
                 # passing the error up might crash the request completely.
                 # However, following the user's specific instruction:
                 # "Fallback Strategy: Báo lỗi cho người dùng"
                 # The reranker itself raises RuntimeError, so we let it propagate if we want to stop.
                 # But here I caught it to log. Re-raising it now.
                 raise e
-        
+
         # Ensure we don't return more than requested if reranker was skipped/not used
         return chunks[:top_k]
 
@@ -144,15 +146,14 @@ class RAGService:
             score_threshold=score_threshold,
         )
         return [
-            ImageElement.from_qdrant_payload(r["payload"], r["score"])
-            for r in results
+            ImageElement.from_qdrant_payload(r["payload"], r["score"]) for r in results
         ]
 
     def search_with_routing(
         self,
         query: str,
-        top_k: int = 3,
-        score_threshold: float = 0.5,
+        top_k: int = 5,
+        score_threshold: float = 0.7,
         image_score_threshold: float = DEFAULT_IMAGE_SCORE_THRESHOLD,
     ) -> SearchResult:
         """
@@ -168,7 +169,9 @@ class RAGService:
             return SearchResult(chunks=chunks, route=route, reasoning=reasoning)
         else:
             images = self.search_images(
-                query, top_k=DEFAULT_IMAGE_NUM_RETRIEVAL, score_threshold=image_score_threshold
+                query,
+                top_k=DEFAULT_IMAGE_NUM_RETRIEVAL,
+                score_threshold=image_score_threshold,
             )
             # Convert ImageElement to ChunkElement for unified interface
             chunks = [

@@ -5,7 +5,6 @@ Graph factory - Central point for graph creation.
 from typing import Optional
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import MemorySaver
 
 from backend.agent.config import WorkflowType
 from backend.agent.graphs.agentic_rag import create_agentic_rag_graph
@@ -33,8 +32,8 @@ def create_graph(
     Returns:
         Compiled StateGraph
     """
-    if checkpointer is None:
-        checkpointer = MemorySaver()
+    # Note: checkpointer=None means stateless mode (for evaluation)
+    # Do NOT create default MemorySaver here
 
     if workflow_type == WorkflowType.AGENTIC_RAG:
         return create_agentic_rag_graph(

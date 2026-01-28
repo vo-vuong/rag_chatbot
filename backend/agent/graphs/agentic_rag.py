@@ -9,7 +9,6 @@ from typing import Optional
 
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
@@ -79,10 +78,7 @@ def create_agentic_rag_graph(
     )
     builder.add_edge("tools", "agent")  # Return to agent after tool execution
 
-    # Compile with checkpointer
-    if checkpointer is None:
-        checkpointer = MemorySaver()
-
+    # Compile with checkpointer (None = stateless mode for evaluation)
     graph = builder.compile(checkpointer=checkpointer)
     logger.info("Agentic RAG graph compiled successfully")
 

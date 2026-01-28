@@ -202,6 +202,183 @@ class GenerationEvaluator:
         else:
             raise ValueError(f"Unknown generation metric: {metric}")
 
+    async def run_from_responses_async(
+        self,
+        responses_data: dict,
+        metric: str = "faithfulness",
+        verbose: bool = False,
+        model_name: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
+        export: bool = True,
+        output_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run evaluation using pre-collected responses from JSON.
+
+        Args:
+            responses_data: Dictionary loaded from response JSON file
+            metric: Metric to run
+            verbose: Print detailed per-query results
+            model_name: LLM model for evaluation
+            embedding_model: Embedding model for response_relevancy metric
+            export: Whether to export results to Excel
+            output_path: Custom output path for results
+
+        Returns:
+            Dictionary with evaluation results
+        """
+        metric_instance = self._get_metric_instance(metric, model_name, embedding_model)
+
+        # Validate metric requirements against response data
+        requires_response = getattr(metric_instance, "requires_response", True)
+        response_mode = responses_data["metadata"].get("mode", "chat")
+
+        if requires_response and response_mode == "search":
+            raise ValueError(
+                f"Metric '{metric}' requires LLM response but responses were collected "
+                f"in 'search' mode. Use 'chat' mode responses or collect new data."
+            )
+
+        logger.info(f"Running {metric_instance.name} from pre-collected responses")
+        logger.info(f"Response mode: {response_mode}, Total queries: {len(responses_data['responses'])}")
+
+        query_results = await self._evaluate_from_responses(
+            metric_instance, responses_data["responses"], verbose
+        )
+
+        summary = metric_instance.aggregate_scores(query_results)
+        top_k = responses_data["metadata"].get("top_k", 5)
+
+        result = {
+            "metric_name": metric_instance.name,
+            "query_results": query_results,
+            "summary": summary,
+            "evaluation_date": datetime.now().isoformat(),
+            "responses_file": responses_data["metadata"].get("created_at", ""),
+            "config": {
+                "top_k": top_k,
+                "score_threshold": responses_data["metadata"].get("score_threshold", 0.0),
+                "model": model_name,
+                "from_responses": True,
+            },
+        }
+
+        logger.info(f"\n{'='*50}")
+        logger.info(f"{metric_instance.name} Results (from responses):")
+        logger.info(f"  Score: {summary.get('score', 0):.4f} ({summary.get('score', 0)*100:.2f}%)")
+        logger.info(f"  Queries: {summary.get('total_queries', 0)}")
+        logger.info(f"{'='*50}")
+
+        if export:
+            path = self.exporter.export_generation_result(
+                result, query_results, output_path
+            )
+            logger.info(f"Results exported to: {path}")
+
+        return result
+
+    def run_from_responses(
+        self,
+        responses_data: dict,
+        metric: str = "faithfulness",
+        verbose: bool = False,
+        model_name: str = "gpt-4o-mini",
+        embedding_model: str = "text-embedding-3-small",
+        export: bool = True,
+        output_path: Optional[Path] = None,
+    ) -> Dict[str, Any]:
+        """
+        Run evaluation from pre-collected responses (synchronous wrapper).
+
+        Args:
+            responses_data: Dictionary loaded from response JSON file
+            metric: Metric to run
+            verbose: Print detailed per-query results
+            model_name: LLM model for evaluation
+            embedding_model: Embedding model for response_relevancy metric
+            export: Whether to export results to Excel
+            output_path: Custom output path for results
+
+        Returns:
+            Dictionary with evaluation results
+        """
+        return asyncio.run(
+            self.run_from_responses_async(
+                responses_data,
+                metric,
+                verbose,
+                model_name,
+                embedding_model,
+                export,
+                output_path,
+            )
+        )
+
+    async def _evaluate_from_responses(
+        self,
+        metric: GenerationMetric,
+        responses: List[dict],
+        verbose: bool,
+    ) -> List[GenerationQueryResult]:
+        """
+        Evaluate metric using pre-collected responses.
+
+        Args:
+            metric: The metric instance to use
+            responses: List of response dictionaries from JSON
+            verbose: Print detailed output
+
+        Returns:
+            List of GenerationQueryResult objects
+        """
+        query_results = []
+        total = len(responses)
+        requires_reference = getattr(metric, "requires_reference", False)
+
+        for i, resp in enumerate(responses, 1):
+            query = resp["query"]
+            response = resp.get("response", "")
+            retrieved_contexts = resp.get("retrieved_contexts", [])
+            ground_truth_answer = resp.get("ground_truth_answer", "")
+            metadata = {
+                "ground_truth_answer": ground_truth_answer,
+                "ground_truth_ids": resp.get("ground_truth_ids", []),
+            }
+
+            if requires_reference:
+                score, extra_metadata = await metric.calculate_query_score(
+                    user_input=query,
+                    response=response,
+                    retrieved_contexts=retrieved_contexts,
+                    reference=ground_truth_answer,
+                )
+            else:
+                score, extra_metadata = await metric.calculate_query_score(
+                    user_input=query,
+                    response=response,
+                    retrieved_contexts=retrieved_contexts,
+                )
+
+            query_result = GenerationQueryResult(
+                query_index=resp.get("query_index", i),
+                query=query,
+                response=response,
+                retrieved_contexts=retrieved_contexts,
+                score=score,
+                metadata={**metadata, **extra_metadata},
+            )
+            query_results.append(query_result)
+
+            if verbose:
+                logger.info(
+                    f"[{i}/{total}] Query: '{query[:40]}...' | Score: {score:.4f}"
+                )
+            elif i % 5 == 0:
+                logger.info(f"Evaluated {i}/{total} queries...")
+
+        logger.info(f"Completed evaluation for {len(query_results)} queries")
+        return query_results
+
     async def _collect_and_evaluate(
         self,
         metric: GenerationMetric,

@@ -1,12 +1,12 @@
 # RAG Evaluation Framework
 
-A modular, extensible framework for evaluating RAG performance using retrieval and generation metrics. **Generation metrics now leverage LangGraph-powered agentic RAG via `/chat/query` endpoint.**
+A modular, extensible framework for evaluating RAG performance using retrieval and generation metrics. **Generation metrics leverage LangGraph-powered agentic RAG via `/chat/query` endpoint.**
 
 ## Overview
 
 This module provides tools to evaluate:
 1. **Retrieval Quality**: How well your RAG system retrieves relevant documents (Hit@K, Recall@K, etc.)
-2. **Generation Quality**: How faithful and accurate the LLM responses are (Faithfulness via RAGAS)
+2. **Generation Quality**: How faithful and accurate the LLM responses are (Faithfulness, Response Relevancy, etc. via RAGAS)
 
 ## Quick Start
 
@@ -38,17 +38,102 @@ conda activate rag_chatbot && python -m rag_evaluation --metric faithfulness --k
 conda activate rag_chatbot && python -m rag_evaluation --list-metrics
 ```
 
+## Two-Phase Workflow (Recommended for Generation Metrics)
+
+The two-phase workflow allows you to **collect API responses once** and then **run multiple evaluations** without making additional API calls. This is especially useful for:
+- Avoiding rate limits when running multiple generation metrics
+- Debugging and iterating on evaluation without waiting for API responses
+- Consistent evaluation across different metrics using the same responses
+
+### Phase 1: Collect Responses
+
+Collect chat responses from `/chat/query` API and save to JSON file:
+
+```bash
+# Collect chat responses (for all generation metrics)
+conda activate rag_chatbot && python -m rag_evaluation collect --k 5
+
+# With custom output path
+conda activate rag_chatbot && python -m rag_evaluation collect --k 5 -o my_responses.json
+
+# With limit for testing
+conda activate rag_chatbot && python -m rag_evaluation collect --k 5 --limit 5 -v
+
+# With custom delay for rate limiting
+conda activate rag_chatbot && python -m rag_evaluation collect --k 5 --delay 10
+```
+
+Output: `rag_evaluation/responses/chat_responses_k5_YYYYMMDD_HHMMSS.json`
+
+### Phase 2: Evaluate from Responses
+
+Run generation metrics using pre-collected responses (no API calls needed):
+
+```bash
+# All generation metrics
+conda activate rag_chatbot && python -m rag_evaluation eval --metric all_generation \
+    --from-chat-responses chat_responses_k5_20260128_165129.json
+
+# Single metric
+conda activate rag_chatbot && python -m rag_evaluation eval --metric faithfulness \
+    --from-chat-responses chat_responses_k5_20260128_165129.json
+
+# Multiple specific metrics
+conda activate rag_chatbot && python -m rag_evaluation eval --metric faithfulness response_relevancy \
+    --from-chat-responses chat_responses_k5_20260128_165129.json
+
+# With verbose output
+conda activate rag_chatbot && python -m rag_evaluation eval --metric answer_correctness \
+    --from-chat-responses chat_responses_k5_20260128_165129.json -v
+```
+
+**Note**: The `--from-chat-responses` option accepts either:
+- Filename only (looks in `rag_evaluation/responses/` directory)
+- Absolute path to JSON file
+
+### JSON Response File Format
+
+The collected responses are stored in JSON format:
+
+```json
+{
+  "metadata": {
+    "mode": "chat",
+    "created_at": "2026-01-28T16:51:29.494180",
+    "test_data_path": "path/to/qr_smartphone_dataset.xlsx",
+    "top_k": 5,
+    "score_threshold": 0.0,
+    "total_queries": 26,
+    "failed_queries": 1,
+    "note": "retrieved_contexts may exceed top_k in chat mode due to agent auto-retrieval"
+  },
+  "responses": [
+    {
+      "query_index": 0,
+      "query": "User question text...",
+      "response": "LLM-generated answer from chat API...",
+      "retrieved_contexts": ["context1...", "context2...", ...],
+      "ground_truth_answer": "Expected answer from test data...",
+      "ground_truth_ids": [1, 4]
+    }
+  ]
+}
+```
+
 ## Rate Limits and Delays
 
-If you are using trial API keys (e.g., Cohere), you may encounter rate limits. The framework automatically handles this for retrieval metrics by adding a delay between queries.
+If you are using trial API keys (e.g., Cohere), you may encounter rate limits. The framework handles this by adding a delay between queries.
 
-- Default delay is **7.0 seconds** (Safe for Cohere Trial re-ranking tasks, limited to 10 requests/minute.).
-- Delay is **disabled** (0.0s) for generation metrics as they are naturally slower.
+- Default delay is **7.0 seconds** (Safe for Cohere Trial re-ranking tasks, limited to 10 requests/minute.)
+- Delay is **disabled** (0.0s) for generation metrics evaluation as they are naturally slower
 - You can override the delay with `--delay`:
 
 ```bash
 # Increase delay for very strict rate limits
 python -m rag_evaluation --metric hit --k 5 --delay 10
+
+# For collect subcommand
+python -m rag_evaluation collect --k 5 --delay 10
 ```
 
 ## Available Metrics
@@ -65,21 +150,47 @@ python -m rag_evaluation --metric hit --k 5 --delay 10
 
 ### Generation Metrics
 
-| Metric | Short Name | Description |
-|--------|------------|-------------|
-| Faithfulness | `faithfulness` | Measures factual consistency between LLM response and retrieved context (via RAGAS) |
-| Response Relevancy | `response_relevancy` | Measures how relevant the response is to the user's question (via RAGAS) |
-| Context Precision | `context_precision` | Measures how well relevant chunks are ranked higher in retrieved results (via RAGAS) |
-| Context Recall | `context_recall` | Measures how many relevant claims from reference are captured in retrieved contexts (via RAGAS) |
-| Answer Correctness | `answer_correctness` | Measures correctness of LLM response compared to ground truth (via RAGAS) |
+| Metric | Short Name | Description | Requires Response | Requires Reference |
+|--------|------------|-------------|-------------------|-------------------|
+| Faithfulness | `faithfulness` | Factual consistency between LLM response and context (via RAGAS) | Yes | No |
+| Response Relevancy | `response_relevancy` | How relevant the response is to the question (via RAGAS) | Yes | No |
+| Context Precision | `context_precision` | How well relevant chunks are ranked higher (via RAGAS) | No | Yes |
+| Context Recall | `context_recall` | How many relevant claims from reference are in contexts (via RAGAS) | No | Yes |
+| Answer Correctness | `answer_correctness` | Correctness of response compared to ground truth (via RAGAS) | Yes | Yes |
+
+**Note**: All generation metrics can use the same `chat_responses.json` file since it contains both `response` and `retrieved_contexts`.
 
 ## CLI Usage
 
+The CLI supports two subcommands: `collect` and `eval`. For backward compatibility, running without a subcommand defaults to `eval`.
+
+### Subcommands
+
 ```bash
+# Collect responses
+python -m rag_evaluation collect [OPTIONS]
+
+# Run evaluation
+python -m rag_evaluation eval [OPTIONS]
+
+# Backward compatible (runs eval)
 python -m rag_evaluation [OPTIONS]
 ```
 
-### Options
+### Collect Subcommand Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-k, --k` | Number of top results to retrieve | `5` |
+| `-t, --threshold` | Minimum similarity score threshold | `0.0` |
+| `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
+| `--api-url` | RAG API base URL | `http://localhost:8000` |
+| `--limit` | Limit number of queries to collect | all |
+| `--delay` | Delay in seconds between queries | `7.0` |
+| `-o, --output` | Custom output JSON file path | auto-generated |
+| `-v, --verbose` | Print detailed progress | off |
+
+### Eval Subcommand Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -89,13 +200,14 @@ python -m rag_evaluation [OPTIONS]
 | `--test-data` | Path to test data Excel file | `qr_smartphone_dataset.xlsx` |
 | `--api-url` | RAG API base URL | `http://localhost:8000` |
 | `--limit` | Limit number of queries to evaluate | all |
+| `--delay` | Delay in seconds between queries | `7.0` |
 | `-v, --verbose` | Print detailed per-query results | off |
 | `-o, --output` | Custom output Excel file path | auto-generated |
 | `--no-export` | Don't export results to Excel | off |
-| `--delay` | Delay in seconds between queries | `7.0` |
 | `--list-metrics` | List available metrics and exit | - |
 | `--model` | LLM model for generation metrics | `gpt-4o-mini` |
 | `--embedding-model` | Embedding model for response_relevancy | `text-embedding-3-small` |
+| `--from-chat-responses` | Path to chat responses JSON file (for generation metrics) | - |
 
 ### Examples
 
@@ -132,6 +244,10 @@ python -m rag_evaluation --metric recall --k 10 -t 0.7 --test-data custom_data.x
 
 # Limit queries for quick testing
 python -m rag_evaluation --metric faithfulness --k 5 --limit 10 -v
+
+# Two-phase workflow: collect then evaluate
+python -m rag_evaluation collect --k 5
+python -m rag_evaluation eval --metric all_generation --from-chat-responses chat_responses_k5_xxx.json
 ```
 
 ## Programmatic Usage
@@ -163,7 +279,7 @@ for name, result in results.items():
     print(f"  Total queries: {result.total_queries}")
 ```
 
-### Generation Metrics (Faithfulness)
+### Generation Metrics (Direct API)
 
 ```python
 from rag_evaluation.generation_evaluator import GenerationEvaluator
@@ -188,6 +304,56 @@ result = evaluator.run(
 # Access results
 print(f"Faithfulness Score: {result['summary']['score']:.4f}")
 print(f"Total queries: {result['summary']['total_queries']}")
+```
+
+### Generation Metrics (From Pre-collected Responses)
+
+```python
+from rag_evaluation.generation_evaluator import GenerationEvaluator
+from rag_evaluation.data.response_collector import load_responses
+
+# Load pre-collected responses
+responses_data = load_responses("path/to/chat_responses_k5_xxx.json")
+
+# Create evaluator
+evaluator = GenerationEvaluator(
+    test_data_path="path/to/test_data.xlsx",
+)
+
+# Run evaluation from responses (no API calls)
+result = evaluator.run_from_responses(
+    responses_data=responses_data,
+    metric="faithfulness",
+    verbose=True,
+    model_name="gpt-4o-mini",
+    export=True,
+)
+
+print(f"Faithfulness Score: {result['summary']['score']:.4f}")
+```
+
+### Response Collector (Programmatic)
+
+```python
+from rag_evaluation.data.response_collector import ResponseCollector
+
+# Create collector
+collector = ResponseCollector(
+    test_data_path="path/to/test_data.xlsx",
+    api_base_url="http://localhost:8000",
+    limit=None,
+    delay=7.0,
+)
+
+# Collect chat responses
+output_path = collector.collect(
+    mode="chat",  # For all generation metrics
+    top_k=5,
+    score_threshold=0.0,
+    verbose=True,
+)
+
+print(f"Responses saved to: {output_path}")
 ```
 
 ## Adding New Metrics
@@ -284,7 +450,7 @@ The test data Excel file should have the following columns:
 rag_evaluation/
 ├── __init__.py              # Package exports
 ├── __main__.py              # Entry point for python -m
-├── cli.py                   # Command-line interface
+├── cli.py                   # Command-line interface with subcommands
 ├── evaluator.py             # Retrieval metrics orchestrator
 ├── generation_evaluator.py  # Generation metrics orchestrator
 ├── base/
@@ -305,12 +471,15 @@ rag_evaluation/
 │   └── answer_correctness.py # Answer Correctness (RAGAS) implementation
 ├── data/
 │   ├── data_loader.py       # Test data loading
-│   └── point_id_parser.py   # ID parsing utilities
+│   ├── point_id_parser.py   # ID parsing utilities
+│   └── response_collector.py # ResponseCollector for chat JSON export
 ├── api/
 │   └── rag_api_client.py    # RAG API client (search + chat)
 ├── export/
 │   └── excel_exporter.py    # Excel export
-├── results/                 # Default output directory
+├── responses/               # Pre-collected API responses (JSON files)
+│   └── .gitkeep
+├── results/                 # Default output directory for Excel files
 └── prepare_testing_data/
     └── qr_smartphone_dataset.xlsx  # Sample test data
 ```
@@ -360,7 +529,7 @@ Precision@K = (Relevant chunks at rank K) / K
 ```
 
 **Process:**
-1. Retrieve contexts using `/rag/search` API
+1. Retrieve contexts using `/chat/query` API (or from pre-collected responses)
 2. Use LLM to compare each retrieved chunk against the `Ground_truth_answer`
 3. Determine if each chunk is relevant
 4. Calculate weighted precision based on position
@@ -370,7 +539,6 @@ Precision@K = (Relevant chunks at rank K) / K
 - **RAGAS library**: `pip install ragas`
 - **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
 - **Ground truth answer**: Requires `Ground_truth_answer` column in test data
-- **RAG API running**: The `/api/v1/rag/search` endpoint must be available
 
 ### Inputs
 
@@ -378,7 +546,7 @@ Precision@K = (Relevant chunks at rank K) / K
 |-------|--------|-------------|
 | `user_input` | Test data `Query` column | The user's question |
 | `reference` | Test data `Ground_truth_answer` column | Expected answer for relevance judgment |
-| `retrieved_contexts` | API `/rag/search` response | Context texts from search results |
+| `retrieved_contexts` | API response or JSON file | Context texts from results |
 
 ### Interpretation
 
@@ -400,7 +568,7 @@ Context Recall = (Claims attributable to retrieved context) / (Total claims in r
 ```
 
 **Process:**
-1. Retrieve contexts using `/rag/search` API
+1. Retrieve contexts using `/chat/query` API (or from pre-collected responses)
 2. Break down the `Ground_truth_answer` into individual claims
 3. Use LLM to check if each claim can be attributed to the retrieved contexts
 4. Calculate the ratio of attributable claims to total claims
@@ -410,7 +578,6 @@ Context Recall = (Claims attributable to retrieved context) / (Total claims in r
 - **RAGAS library**: `pip install ragas`
 - **OpenAI API key**: Set `OPENAI_API_KEY` environment variable
 - **Ground truth answer**: Requires `Ground_truth_answer` column in test data
-- **RAG API running**: The `/api/v1/rag/search` endpoint must be available
 
 ### Inputs
 
@@ -418,7 +585,7 @@ Context Recall = (Claims attributable to retrieved context) / (Total claims in r
 |-------|--------|-------------|
 | `user_input` | Test data `Query` column | The user's question |
 | `reference` | Test data `Ground_truth_answer` column | Expected answer for claim extraction |
-| `retrieved_contexts` | API `/rag/search` response | Context texts from search results |
+| `retrieved_contexts` | API response or JSON file | Context texts from results |
 
 ### Interpretation
 
@@ -436,12 +603,12 @@ Answer Correctness measures how **correct** the LLM response is compared to the 
 
 **Formula:**
 ```
-Answer Correctness = (0.75 × Factual Similarity) + (0.25 × Semantic Similarity)
+Answer Correctness = (0.75 x Factual Similarity) + (0.25 x Semantic Similarity)
 ```
 
 **Factual Similarity** (F1 score of claims):
 ```
-F1 = TP / (TP + 0.5 × (FP + FN))
+F1 = TP / (TP + 0.5 x (FP + FN))
 - TP: Claims present in both response and reference
 - FP: Claims in response but not in reference (incorrect facts)
 - FN: Claims in reference but not in response (missing facts)
